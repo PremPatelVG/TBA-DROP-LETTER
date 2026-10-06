@@ -1,0 +1,72 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local",
+        "src",
+        "lib/**/*.test.js"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" install --no-audit --no-fund",
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
+    }
+  ],
+  "apphosting": [
+    {
+      "backendId": "tba-drop-letter",
+      "rootDir": "/",
+      "ignore": [
+        "node_modules",
+        ".git",
+        ".next",
+        ".next-e2e",
+        "functions/node_modules",
+        "functions/lib",
+        "preview",
+        "tests",
+        "scripts",
+        "android",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*-debug.log",
+        "service-account*.json"
+      ]
+    }
+  ],
+  "emulators": {
+    "singleProjectMode": true,
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 9099
+    },
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8080
+    },
+    "functions": {
+      "host": "127.0.0.1",
+      "port": 5001
+    },
+    "pubsub": {
+      "host": "127.0.0.1",
+      "port": 8085
+    },
+    "ui": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 4000
+    }
+  }
+}

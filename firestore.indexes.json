@@ -1,0 +1,209 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "drops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "drop_date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "drops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisor_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "drop_date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "drops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "search_tokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "drop_date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "drops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisor_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "search_tokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "drop_date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "drops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "responded",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "drop_date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "drops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisor_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "responded",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "drop_date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "drops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "responded",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "search_tokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "drop_date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "drops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisor_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "responded",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "search_tokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "drop_date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "direct_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisor_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lead_date",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "level_history",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisor_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "changed_at",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "drops",
+      "fieldPath": "search_tokens",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "drops",
+      "fieldPath": "full_address",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "drops",
+      "fieldPath": "response_notes",
+      "indexes": []
+    }
+  ]
+}

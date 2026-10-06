@@ -1,0 +1,41 @@
+{
+  "packageId": "com.tba.dropletter",
+  "host": "your-app-domain.example",
+  "name": "TBA Drop Letter",
+  "launcherName": "TBA Drop Letter",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#4f46e5",
+  "themeColorDark": "#4f46e5",
+  "navigationColor": "#ffffff",
+  "navigationColorDark": "#0f172a",
+  "navigationDividerColor": "#e2e8f0",
+  "navigationDividerColorDark": "#0f172a",
+  "backgroundColor": "#f8fafc",
+  "enableNotifications": false,
+  "startUrl": "/advisor",
+  "iconUrl": "https://your-app-domain.example/icons/advisor-512.png",
+  "maskableIconUrl": "https://your-app-domain.example/icons/advisor-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "tba-drop-letter.keystore",
+    "alias": "tba-drop-letter"
+  },
+  "appVersionCode": 1,
+  "appVersion": "1",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://your-app-domain.example/",
+  "minSdkVersion": 21,
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}

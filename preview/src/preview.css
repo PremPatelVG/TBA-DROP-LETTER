@@ -1,0 +1,9 @@
+@import "../../src/app/globals.css";
+@source "../../src";
+
+/* next/font is not available here; load Geist from Google Fonts in index.html. */
+:root {
+  --font-geist-sans: "Geist";
+  --font-geist-mono: "Geist Mono";
+}
+html, body { background: #f8fafc; }

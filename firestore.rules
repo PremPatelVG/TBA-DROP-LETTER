@@ -1,0 +1,155 @@
+rules_version = '2';
+
+// TBA Drop Letter: who can read and write what. Anything not allowed below is refused.
+//
+// Everyone signs in with Google. Only people on the access list (users/*) who are active get the custom
+// claims { role, pid } (set by the server in src/app/actions.ts). Every rule also re-reads that access
+// entry, so deactivating someone takes effect at once, even while their sign-in token is still valid.
+// People who are not on the list have no claims and can read or write nothing.
+// Access-list entries, level history and weekly results are written only by the server (Admin SDK).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- who is asking ----------
+
+    function entryPath() {
+      return /databases/$(database)/documents/users/$(request.auth.token.pid);
+    }
+    // Signed in, on the list, active, and the token's claims still match the access entry.
+    function listed() {
+      return request.auth != null
+        && request.auth.token.get('pid', null) is string
+        && request.auth.token.get('role', null) is string
+        && exists(entryPath())
+        && get(entryPath()).data.active == true
+        && get(entryPath()).data.uid == request.auth.uid
+        && get(entryPath()).data.role == request.auth.token.role;
+    }
+    function me() { return request.auth.token.pid; }
+    function isAdvisor() { return listed() && request.auth.token.role == 'advisor'; }
+    function isAdmin() { return listed() && request.auth.token.role in ['operations', 'master']; }
+    function isMaster() { return listed() && request.auth.token.role == 'master'; }
+
+    // ---------- field checks ----------
+
+    function text(v, max) { return v is string && v.trim().size() > 0 && v.size() <= max; }
+    function optText(v, max) { return v == null || (v is string && v.size() <= max); }
+    function filled(v) { return v is string && v.trim().size() > 0; }
+    function isDate(v) { return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    // 10 digits, optionally +91; spaces and dashes allowed (same as src/lib/validate.ts).
+    function isPhone(v) { return v.replace('[ -]', '').matches('^([+]91)?[0-9]{10}$'); }
+    function isEmail(v) { return v.matches('^[^ @]+@[^ @]+[.][^ @]+$'); }
+    function ownerAndCreatedUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['advisor_id', 'created_at']);
+    }
+
+    // ---------- access list ----------
+
+    match /users/{userId} {
+      // Your own entry; operations read advisors; master reads everyone.
+      allow get: if listed() && (userId == me() || (isAdmin() && (resource.data.role == 'advisor' || isMaster())));
+      allow list: if isAdmin() && (resource.data.role == 'advisor' || isMaster());
+      allow write: if false;
+    }
+
+    // ---------- drops: one entry = one letter ----------
+
+    function dropKeys() {
+      return ['advisor_id', 'office_number', 'company_name', 'building_name', 'block_no', 'area', 'city', 'full_address',
+              'drop_date', 'responded', 'response_type', 'response_date', 'response_notes', 'response_phone',
+              'response_email', 'created_at', 'search_tokens'];
+    }
+    function validDrop(d) {
+      return d.keys().hasAll(dropKeys()) && d.keys().hasOnly(dropKeys())
+        && text(d.office_number, 50) && text(d.company_name, 200) && text(d.building_name, 200) && text(d.block_no, 20)
+        && optText(d.area, 200) && optText(d.city, 100) && optText(d.full_address, 500)
+        && isDate(d.drop_date)
+        && d.created_at is timestamp
+        && d.search_tokens is list && d.search_tokens.size() <= 1000
+        && optText(d.response_notes, 2000)
+        && validResponse(d);
+    }
+    // A letter marked as responded needs a date and the responder's phone number or email (or both).
+    function validResponse(d) {
+      return d.responded == false
+        ? d.response_type == 'none' && d.response_date == null && d.response_phone == null && d.response_email == null
+        : d.responded == true
+          && d.response_type in ['call', 'email']
+          && isDate(d.response_date) && d.response_date >= d.drop_date
+          && (filled(d.response_phone) || filled(d.response_email))
+          && (d.response_phone == null || (d.response_phone is string && d.response_phone.size() <= 30 && isPhone(d.response_phone)))
+          && (d.response_email == null || (d.response_email is string && d.response_email.size() <= 200 && isEmail(d.response_email)));
+    }
+
+    match /drops/{dropId} {
+      // Advisors only their own (their queries must filter on advisor_id); operations and master everything.
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
+      allow create: if isAdvisor() && request.resource.data.advisor_id == me() && validDrop(request.resource.data);
+      allow update: if isAdvisor() && resource.data.advisor_id == me() && ownerAndCreatedUnchanged()
+        && validDrop(request.resource.data);
+      allow delete: if false;
+    }
+
+    // One document per advisor and building ("<pid>__<building key>"), for the building filter and counts.
+    match /buildings/{buildingId} {
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
+      allow create, update: if isAdvisor()
+        && request.resource.data.advisor_id == me()
+        && buildingId == me() + '__' + request.resource.data.key
+        && request.resource.data.keys().hasAll(['advisor_id', 'key', 'name'])
+        && request.resource.data.keys().hasOnly(['advisor_id', 'key', 'name', 'city', 'city_key'])
+        && request.resource.data.key is string && request.resource.data.key.size() <= 100
+        && text(request.resource.data.name, 200)
+        && optText(request.resource.data.get('city', null), 100)
+        && optText(request.resource.data.get('city_key', null), 100);
+      allow delete: if false;
+    }
+
+    // ---------- direct leads ----------
+
+    function leadKeys() {
+      return ['advisor_id', 'contact_name', 'company_name', 'phone', 'email', 'notes', 'lead_date', 'drop_id', 'created_at'];
+    }
+    function validLead(l) {
+      return l.keys().hasAll(leadKeys()) && l.keys().hasOnly(leadKeys())
+        && text(l.contact_name, 200) && optText(l.company_name, 200) && optText(l.notes, 2000)
+        && optText(l.phone, 30) && optText(l.email, 200) && (filled(l.phone) || filled(l.email))
+        && isDate(l.lead_date) && l.created_at is timestamp
+        && (l.drop_id == null
+            || (l.drop_id is string && get(/databases/$(database)/documents/drops/$(l.drop_id)).data.advisor_id == me()));
+    }
+
+    match /direct_leads/{leadId} {
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
+      allow create: if isAdvisor() && request.resource.data.advisor_id == me() && validLead(request.resource.data);
+      allow update: if isAdvisor() && resource.data.advisor_id == me() && ownerAndCreatedUnchanged()
+        && validLead(request.resource.data);
+      allow delete: if false;
+    }
+
+    // ---------- target levels ----------
+
+    match /levels/{levelId} {
+      allow read: if listed();
+      // Operations and master may change a level's weekly target, and nothing else.
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['target_letters', 'updated_by', 'updated_at'])
+        && request.resource.data.target_letters is int
+        && request.resource.data.target_letters >= 1 && request.resource.data.target_letters <= 100000
+        && request.resource.data.updated_by == me()
+        && request.resource.data.updated_at == request.time;
+      allow create, delete: if false;
+    }
+
+    match /level_history/{changeId} {
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
+      allow write: if false;
+    }
+
+    match /weekly_results/{resultId} {
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
+      allow write: if false;
+    }
+  }
+}

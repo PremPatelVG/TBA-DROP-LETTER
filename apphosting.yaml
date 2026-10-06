@@ -1,0 +1,36 @@
+# Firebase App Hosting settings for the backend "tba-drop-letter" (see README, "Go live: step by step").
+# Docs: https://firebase.google.com/docs/app-hosting/configure
+runConfig:
+  minInstances: 0      # no cost while nobody uses the app; the first visit after a quiet spell takes a few seconds
+  maxInstances: 4
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  # Use Firebase (Google sign-in + Firestore) instead of the built-in demo data.
+  - variable: NEXT_PUBLIC_USE_MOCK
+    value: "false"
+    availability: [BUILD, RUNTIME]
+
+  # The Firebase web settings (API key, project ID, app ID) come from the web app linked to this backend,
+  # through FIREBASE_WEBAPP_CONFIG, so they are not repeated here. Values set here win over them.
+
+  # Sign-in on phones (redirect sign-in): set this to the app's own address, without https://, once you know it,
+  # for example tba-drop-letter--your-project-id.<region>.hosted.app or drop.yourcompany.in. See README, go-live step 9.
+  # - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+  #   value: your-app-domain.example
+  #   availability: [BUILD]
+
+  # Android app for advisors (README, "Android app for advisors"). Served at /.well-known/assetlinks.json so the app
+  # opens full screen, without the browser bar. Neither value is a secret.
+  # The app's package name: must match android/twa-manifest.json, and can never change once the app is on Google Play.
+  - variable: ANDROID_PACKAGE_NAME
+    value: com.tba.dropletter
+    availability: [RUNTIME]
+  # The SHA-256 fingerprint of the app's signing key, which `npm run build:apk` prints at the end. If the app is
+  # published on Google Play, add Play's app signing fingerprint too, after a comma (Play Console > Test and
+  # release > App integrity > App signing). Remove the # signs, paste the fingerprint, and deploy again.
+  # - variable: ANDROID_CERT_SHA256
+  #   value: "AB:CD:EF:...:12"
+  #   availability: [RUNTIME]

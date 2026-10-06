@@ -1,0 +1,12 @@
+# Netlify builds only the clickable demo of the front end: demo mode with sample data kept in the browser, no
+# Firebase, no service worker, and no environment variables or secrets needed. The real app is deployed to Firebase
+# App Hosting (apphosting.yaml, firebase.json); nothing here affects it. Locally the same build is `npm run build:demo`.
+[build]
+  command = "npm run build:demo"
+  publish = "preview/dist-demo"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # The repository is also a Next.js app. The demo is a single static page, so Netlify's automatic Next.js runtime
+  # (which expects the server build in .next) must not run.
+  NETLIFY_NEXT_PLUGIN_SKIP = "true"
