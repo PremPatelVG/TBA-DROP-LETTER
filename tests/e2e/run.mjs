@@ -148,7 +148,7 @@ try {
     await signIn("riya.shah@example.com", "Riya Shah");
     await page.waitForURL(/\/advisor$/);
     await page.getByText("My drops").waitFor();
-    await page.locator("text=/\\d+ \\/ 200 letters/").waitFor();
+    await page.getByText("Your belt this week").waitFor();
     await page.getByRole("link", { name: "New drop" }).last().click();
     await page.fill("#office_number", "1204"); await page.fill("#company_name", "E2E Test Co");
     await page.fill("#building_name", "Shivalik Shilp"); await page.fill("#block_no", "B"); await page.fill("#city", "Ahmedabad");
@@ -240,7 +240,7 @@ try {
     await signOut();
   });
 
-  await step("operations: dashboard, search, export, add an advisor, deactivate one, edit a target", async () => {
+  await step("operations: dashboard, search, export, add an advisor, deactivate one", async () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await signIn("ops@example.com", "Ops Admin");
     await page.waitForURL(/\/ops$/);
@@ -281,13 +281,6 @@ try {
     await page.locator("tr", { hasText: "Neha Desai" }).getByRole("button", { name: "Deactivate" }).click();
     await page.locator("tr", { hasText: "Neha Desai" }).getByText("Deactivated").waitFor();
     assert.equal((await db.doc("users/u-adv3").get()).get("active"), false);
-
-    await page.getByRole("link", { name: "Target levels" }).click();
-    const card = page.locator("div", { has: page.getByText("Level 1", { exact: true }) }).filter({ has: page.locator("input[type=number]") }).last();
-    await card.locator("input[type=number]").fill("210");
-    await card.getByRole("button", { name: "Save" }).click();
-    await card.getByText("Saved.").waitFor();
-    assert.equal((await db.doc("levels/1").get()).get("target_letters"), 210);
     await signOut();
   });
 
@@ -319,16 +312,16 @@ try {
     await shot("08-deactivated");
   });
 
-  await step("the weekly level job runs in the Functions emulator, and a second run changes nothing", async () => {
+  await step("the weekly belt snapshot runs in the Functions emulator, and a second run changes nothing", async () => {
     // The Functions emulator serves a scheduled function as an HTTP trigger with this id.
-    const url = `http://127.0.0.1:5001/${PROJECT}/asia-south1/weeklyLevels-0`;
-    const sunday = new Date();
-    sunday.setDate(sunday.getDate() - sunday.getDay()); // back to the most recent Sunday (0 = Sunday)
-    const at = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, "0")}-${String(sunday.getDate()).padStart(2, "0")}T12:00:00+05:30`;
+    const url = `http://127.0.0.1:5001/${PROJECT}/asia-south1/weeklySnapshot-0`;
+    const monday = new Date();
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7)); // back to the most recent Monday
+    const at = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}T09:00:00+05:30`;
     const run = () => fetch(url, { method: "POST", headers: { "X-CloudScheduler-ScheduleTime": at } });
     const snapshot = async () => {
       const out = {};
-      for (const c of ["users", "level_history", "weekly_results"]) {
+      for (const c of ["users", "weekly_results"]) {
         for (const d of (await db.collection(c).get()).docs) out[`${c}/${d.id}`] = d.updateTime.toMillis();
       }
       return out;

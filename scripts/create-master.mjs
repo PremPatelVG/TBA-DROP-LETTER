@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Creates the first master account and the default target levels. Safe to run again.
+// Creates the first master account. Safe to run again.
 //
 //   npm run create-master -- --email you@gmail.com --name "Your Name"
 //
@@ -17,12 +17,6 @@ import { parseArgs } from "node:util";
 import { applicationDefault, cert, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
-
-const LEVELS = [
-  { id: "1", name: "Level 1", target_letters: 200, sort_order: 1 },
-  { id: "2", name: "Level 2", target_letters: 350, sort_order: 2 },
-  { id: "3", name: "Level 3", target_letters: 500, sort_order: 3 },
-];
 
 function fail(message) {
   console.error(`\nCould not create the master account: ${message}\n`);
@@ -87,18 +81,10 @@ initializeApp(emulator ? { projectId } : { credential: key ? cert(key) : applica
 const db = getFirestore();
 
 try {
-  for (const { id, ...level } of LEVELS) {
-    const ref = db.doc(`levels/${id}`);
-    if (!(await ref.get()).exists) {
-      await ref.set(level);
-      console.log(`Added ${level.name}: ${level.target_letters} letters a week`);
-    }
-  }
-
   const found = await db.collection("users").where("email", "==", email).limit(1).get();
   if (found.empty) {
     await db.collection("users").add({
-      role: "master", full_name: name, email, advisor_code: null, region: null, level_id: null, active: true, uid: null,
+      role: "master", full_name: name, email, advisor_code: null, region: null, active: true, uid: null,
       created_at: FieldValue.serverTimestamp(), created_by: "create-master script",
     });
   } else {

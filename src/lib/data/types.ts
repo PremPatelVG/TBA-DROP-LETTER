@@ -12,22 +12,8 @@ export type Profile = {
   email: string;
   advisor_code: string | null;
   region: string | null;
-  level_id: number | null;
   active: boolean;
   created_at: string;
-};
-
-export type Level = { id: number; name: string; target_letters: number; sort_order: number };
-
-export type LevelChange = {
-  id: string;
-  advisor_id: string;
-  from_level_id: number | null;
-  to_level_id: number;
-  /** Profile id of the person who changed it, or "weekly-job" for automatic changes. */
-  changed_by: string | null;
-  reason: string | null;
-  changed_at: string;
 };
 
 /** One drop entry = one letter left at one office. Fields in the order the advisor fills them. */
@@ -157,7 +143,7 @@ export interface DataApi {
   /** Buildings with drops, for filters (advisors: their own). */
   listBuildings(): Promise<BuildingRef[]>;
 
-  /** Dashboard numbers for one advisor (advisors: themselves). `week` is the current competition week (Sunday noon to Sunday noon, IST). */
+  /** Dashboard numbers for one advisor (advisors: themselves). `week` is the current competition week (Monday 09:00 to Monday 09:00, IST). */
   advisorSummary(advisorId: string, week: { start: string; end: string }): Promise<AdvisorSummary | null>;
   /** Operations dashboard: totals, the last six months and one row per advisor. */
   opsSummary(week: { start: string; end: string }, advisorIds: string[]): Promise<OpsSummary | null>;
@@ -166,11 +152,6 @@ export interface DataApi {
    * read it (advisors included, so the advisor dashboard can show the leaderboard with their own row marked).
    */
   beltLeaderboard(week: { start: string; end: string }): Promise<LeaderboardRow[]>;
-
-  listLevels(): Promise<Level[]>;
-  updateLevelTarget(id: number, target: number): Promise<void>;
-  changeAdvisorLevel(advisorId: string, levelId: number, reason: string | null): Promise<void>;
-  listLevelHistory(advisorId?: string): Promise<LevelChange[]>;
 
   listLeads(): Promise<Lead[]>;
   createLead(input: LeadInput): Promise<Lead>;

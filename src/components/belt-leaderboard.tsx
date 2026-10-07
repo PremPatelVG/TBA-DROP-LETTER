@@ -66,7 +66,7 @@ function BeltLegend({ rows }: { rows: LeaderboardRow[] }) {
   );
 }
 
-const WEEK_NOTE = "Belts are set by entries this week (the competition week runs Sunday noon to Sunday noon, IST). One drop entry is one letter.";
+const WEEK_NOTE = "Belts are set by entries this week (the competition week runs Monday 09:00 to Monday 09:00, IST, and standings refresh every Monday morning). One drop entry is one letter.";
 
 /** Ops/master view: every advisor ranked by entries this week, with a belt-distribution summary. */
 export function OpsBeltLeaderboard({ rows }: { rows: LeaderboardRow[] }) {

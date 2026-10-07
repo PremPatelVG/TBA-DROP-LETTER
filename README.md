@@ -39,8 +39,8 @@ is signed out; a deactivated person sees "Your access has been turned off".
 ## Screens
 Advisor (mobile screens with bottom navigation; the Android app opens them full screen, and they also work in a
 phone browser or installed from it via `public/advisor.webmanifest`):
-- `/advisor` dashboard: letters dropped, buildings covered, responses, response rate, progress to this week's level
-  target, and my drops (responded drops are green).
+- `/advisor` dashboard: letters dropped, buildings covered, responses, response rate, this week's belt and how many
+  more entries reach the next belt, the belt leaderboard, and my drops (responded drops are green).
 - `/advisor/drops/new` add a drop, one entry per letter: office number*, company name*, building name*, block no.*,
   area, city, full address, date of drop (defaults to today); * = required. "Save and add another" keeps the
   building details. Works without signal: the entry is kept on the phone and syncs when the connection is back.
@@ -52,18 +52,20 @@ phone browser or installed from it via `public/advisor.webmanifest`):
 - `/advisor/leads` direct leads.
 
 Operations and master (desktop web admin):
-- `/ops` consolidated totals, month-wise chart (last 6 months), one row per advisor.
+- `/ops` consolidated totals, month-wise chart (last 6 months), one row per advisor, and the belt leaderboard.
 - `/ops/drops` all drops with filters (advisor, date range, city, building), multi-word search over office number,
   company name and building name, responder phone and email columns, and Excel export of the filtered rows
   (SheetJS, in the browser).
-- `/ops/advisors` add advisors (name, advisor ID, region, Google email), deactivate or reactivate them, and change
-  an advisor's level by hand (logged to level history).
+- `/ops/advisors` add advisors (name, advisor ID, region, Google email), deactivate or reactivate them.
 - `/master` (master only) operations accounts.
-- `/ops/levels` edit level targets (200/350/500 by default), the weekly level rules, and level history.
 
-Definitions: one drop entry is one letter, so letters dropped, weekly target progress, analytics, the per-advisor
+Ranking: advisors are ranked only by the **belt** system, from their entry count in the current competition week —
+Red (fewer than 200), Yellow (200-349), Blue (350-500), Green (501 or more). These thresholds are fixed; there is
+no level system. The leaderboard refreshes every Monday morning when the previous week's standings are recorded.
+
+Definitions: one drop entry is one letter, so letters dropped, this week's belt, analytics, the per-advisor
 tables and the export all count entries. Buildings covered = distinct building names. Response rate = responded
-letters / letters. Level targets are letters per week; the competition week runs Sunday 12:00 noon to the following Sunday 12:00 noon, India time.
+letters / letters. The competition week runs Monday 09:00 to the following Monday 09:00, India time.
 
 ---
 
@@ -83,7 +85,7 @@ Commands are typed in a terminal window opened in the project folder:
 4. Google Analytics is not needed; you can turn it off. Click **Create project**.
 
 ### 2. Upgrade to the Blaze plan and set a budget alert
-The weekly level check (a scheduled Cloud Function) and App Hosting need the pay-as-you-go **Blaze** plan.
+The weekly belt snapshot (a scheduled Cloud Function) and App Hosting need the pay-as-you-go **Blaze** plan.
 1. In the Firebase console, click **Upgrade** next to "Spark plan" (bottom left, or under the gear icon >
    **Usage and billing**), choose **Blaze**, and create or pick a Cloud Billing account with your card.
 2. Set a budget alert, so you get an email if costs go above what you expect. If the upgrade screen offers a
@@ -128,7 +130,7 @@ Pick your project with the arrow keys and Enter, and when asked for an alias typ
 ```
 npx firebase deploy
 ```
-This uploads the security rules and search indexes, the weekly level check, and the app itself. The first time
+This uploads the security rules and search indexes, the weekly belt snapshot, and the app itself. The first time
 it asks a few questions:
 - "Did not find backend(s) tba-drop-letter. Do you want to create them?" press Enter (yes).
 - "Which backends do you want to create and deploy to?" press Space to tick `tba-drop-letter`, then Enter.
@@ -146,7 +148,7 @@ Use the Google account (Gmail or company Google Workspace) of the person who wil
 ```
 npm run create-master -- --email you@yourcompany.in --name "Your Name"
 ```
-It creates the target levels (200/350/500 letters a week) and the master entry, and uses the login from step 6.
+It creates the master entry and uses the login from step 6.
 It is safe to run again, for example to fix the name or to restore master access.
 
 If it says it has **no access**: run `npx firebase login --reauth` and try again. If it still fails, use a key
@@ -177,8 +179,8 @@ If you later add your own domain, repeat 2-5 with that domain.
 1. Open the app's address and click **Sign in with Google** with the master account.
 2. **Master** screen: add each operations person (name and the Google email they will sign in with).
 3. **Advisors** screen (operations or master): **Add advisor** with full name, advisor ID (e.g. `ADV001`),
-   region and their Google email. New advisors start at the lowest level.
-4. **Levels**: change the weekly targets if 200/350/500 is not right.
+   region and their Google email. Advisors are ranked by the belt system from their entries each week; there is
+   nothing else to set up.
 
 To remove someone, click **Deactivate** next to them: they lose access at once and are signed out
 (**Reactivate** undoes it).
@@ -320,7 +322,7 @@ data, or Google Play updates it.
   account is deleted and the person sees "You don't have access". Deactivated: the Auth account is disabled and
   its sessions revoked. Otherwise it stores the custom claims `{ role, pid }` (pid = the `users` document ID) and
   the Auth uid on the entry.
-- Every other server action (`createAdvisor`, `createOpsUser`, `setUserActive`, `changeAdvisorLevel`) verifies
+- Every other server action (`createAdvisor`, `createOpsUser`, `setUserActive`) verifies
   the caller's ID token (including revocation) and role again, against the `users` entry.
 - Deactivating disables the Auth account and revokes its refresh tokens; the security rules also re-read the
   `users` entry on every request, so access stops at once, not when the token expires.
@@ -329,13 +331,11 @@ data, or Google Play updates it.
 ### Data (Firestore)
 | Collection | Contents | Written by |
 |---|---|---|
-| `users` | access list: role, full_name, email, advisor_code, region, level_id, active, uid, level_state (weekly streaks) | server only |
+| `users` | access list: role, full_name, email, advisor_code, region, active, uid | server only |
 | `drops` | one letter each: advisor_id, office_number, company_name, building_name, block_no, area, city, full_address, drop_date, responded, response_type/date/notes/phone/email, created_at, search_tokens | the advisor |
 | `buildings` | one per advisor and building (`<pid>__<key>`), for the building/city filters and "buildings covered" | the advisor |
 | `direct_leads` | contact_name, company_name, phone, email, notes, lead_date, drop_id | the advisor |
-| `levels` | name, target_letters (200/350/500), sort_order | operations and master (target only) |
-| `level_history` | level changes, weekly or manual | server and weekly job |
-| `weekly_results` | letters per advisor per week, one per advisor and Sunday (the week's start) | weekly job |
+| `weekly_results` | the weekly belt snapshot: letters and belt per advisor, one per advisor and Monday (the week's start) | the weekly job |
 
 ### Security rules (`firestore.rules`)
 - Nothing is readable or writable without the claims of an active, listed person whose entry still matches
@@ -343,8 +343,8 @@ data, or Google Play updates it.
 - Advisors create, read and update only their own drops, leads and buildings; they cannot change `advisor_id` or
   `created_at` and cannot delete. Required fields, lengths and dates are checked, and a responded drop must have a
   response date and a valid phone number or email (or both).
-- Operations and master read everything. Only operations and master can change a level's target (and nothing
-  else on it). The access list, level history and weekly results are written only by the server.
+- Operations and master read everything. The access list and the weekly belt snapshot (`weekly_results`) are
+  written only by the server; advisors read only their own `weekly_results` rows.
 
 ### Search and filters
 Firestore has no full-text search, so each drop stores `search_tokens`: every prefix (up to 20 characters) of
@@ -360,15 +360,14 @@ Dashboards, month-wise analytics and weekly progress use Firestore count aggrega
 (`getCountFromServer`), which cost one read per 1,000 counted entries, instead of downloading drops. The Excel
 export reads the filtered drops in pages of 500.
 
-### Weekly level check (`functions/`)
-`weeklyLevels` is a 2nd-gen scheduled function (region asia-south1) that runs every Sunday at 12:00 noon India time.
-For each active advisor it counts the entries of the previous competition week (Sunday 12:00 noon to Sunday 12:00 noon) and applies the rules in
-`functions/src/levels/rules.ts` (shared with the app's Levels page and unit-tested): meeting the target 4 weeks
-in a row moves up one level; an advisor above the lowest level who misses it 2 weeks in a row moves down one
-level, never below the lowest. Each week is applied in a transaction that writes `weekly_results/<advisor>_<sunday>`,
-the advisor's level and streaks, and `level_history/weekly_<advisor>_<sunday>`. A week that is already recorded is
-skipped, so running the job twice for the same week changes nothing; if a run is missed, the next one catches up
-(up to 8 weeks). A manual level change restarts the streaks.
+### Weekly belt snapshot (`functions/`)
+`weeklySnapshot` is a 2nd-gen scheduled function (region asia-south1) that runs every Monday at 09:00 India time.
+For each active advisor it counts the entries of the competition week that just ended (Monday 09:00 to Monday 09:00,
+using the same week maths as the app — `functions/src/weekly/week.ts`, matching `currentWeek()` in
+`src/lib/stats.ts`, unit-tested) and records the advisor's final belt for that week in
+`weekly_results/<advisor>_<monday>`. The record is created only if it does not already exist, so running the job
+twice for the same week changes nothing. Belts are the sole ranking (Red < 200, Yellow 200-349, Blue 350-500,
+Green 501+); there is no promotion, demotion or level history.
 
 ### Offline
 Firestore offline persistence is on (IndexedDB, multi-tab). An advisor who loses signal while the app is open can
@@ -447,11 +446,11 @@ Needs Java 21 or newer for the Firestore emulator.
    Terminal 2: `npm run emulators:seed` (clears the emulators, adds 5 people and about 340 drops), then `npm run dev`.
 4. Sign in through the Auth emulator's Google page with one of: `master@example.com`, `ops@example.com`,
    `riya.shah@example.com`, `karan.mehta@example.com`, `neha.desai@example.com`. Any other email is refused.
-5. Run the weekly job by hand: `curl -X POST http://127.0.0.1:5001/demo-tba/asia-south1/weeklyLevels-0`.
+5. Run the weekly job by hand: `curl -X POST http://127.0.0.1:5001/demo-tba/asia-south1/weeklySnapshot-0`.
 
 ## Tests
 ```
-npm test            # security rules (tests/rules) + level rules and weekly job (functions/src/levels/*.test.ts)
+npm test            # security rules (tests/rules) + week maths and weekly snapshot (functions/src/weekly/*.test.ts)
 npm run test:e2e    # browser test of the main flows against the emulators
 npm run lint && npm run build
 ```
@@ -461,8 +460,8 @@ npm run lint && npm run build
   unlisted person is refused; an advisor adds a drop, logs a response, and saves a drop offline that syncs later;
   with the browser offline and the app server stopped, the advisor app starts from its offline copy and opens a drop
   and New drop; operations uses the dashboard (outside the service worker's scope), search, Excel export, adds and
-  deactivates an advisor and edits a target; master adds an operations user who then signs in; the deactivated
-  advisor is refused; the weekly job runs twice with no change the second time; `assetlinks.json`, the manifest and
+  deactivates an advisor; master adds an operations user who then signs in; the deactivated
+  advisor is refused; the weekly belt snapshot runs twice with no change the second time; `assetlinks.json`, the manifest and
   its icons are served as the Android app needs. Screenshots go to `tests/e2e/output/`.
 - The real Google sign-in page needs internet access. The test hands the emulator a Google account directly
   (`window.__E2E_GOOGLE_ACCOUNT`, honoured only in emulator builds); `E2E_POPUP=1` uses the emulator's pop-up.

@@ -34,7 +34,6 @@ function toProfile(snap: DocumentSnapshot): Profile {
     email: d.email ?? "",
     advisor_code: d.advisor_code ?? null,
     region: d.region ?? null,
-    level_id: typeof d.level_id === "number" ? d.level_id : null,
     active: d.active === true,
     created_at: iso(d.created_at),
   };
@@ -145,8 +144,6 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
     const email = googleEmail(input.email);
 
     const db = adminDb();
-    const lowest = await db.collection("levels").orderBy("sort_order").limit(1).get();
-    if (lowest.empty) throw new Refusal("No target levels found. Run the create-master script first (see README).");
     const ref = db.collection("users").doc();
     await db.runTransaction(async (tx) => {
       const [byEmail, byCode] = await Promise.all([
@@ -156,9 +153,8 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
       if (!byEmail.empty) throw new Refusal(`${email} is already on the list.`);
       if (!byCode.empty) throw new Refusal(`Advisor ID ${advisor_code} already exists.`);
       tx.create(ref, {
-        role: "advisor", full_name, email, advisor_code, region, level_id: Number(lowest.docs[0].id), active: true, uid: null,
+        role: "advisor", full_name, email, advisor_code, region, active: true, uid: null,
         created_at: FieldValue.serverTimestamp(), created_by: me.pid,
-        level_state: { met_streak: 0, miss_streak: 0, last_week: null },
       });
     });
     return toProfile(await ref.get());
@@ -177,7 +173,7 @@ export async function createOpsUser(idToken: string, input: NewOpsUser): Promise
       const byEmail = await tx.get(db.collection("users").where("email", "==", email).limit(1));
       if (!byEmail.empty) throw new Refusal(`${email} is already on the list.`);
       tx.create(ref, {
-        role: "operations", full_name, email, advisor_code: null, region: null, level_id: null, active: true, uid: null,
+        role: "operations", full_name, email, advisor_code: null, region: null, active: true, uid: null,
         created_at: FieldValue.serverTimestamp(), created_by: me.pid,
       });
     });
@@ -206,36 +202,6 @@ export async function setUserActive(idToken: string, id: string, active: boolean
       await auth.updateUser(t.uid, { disabled: !active }).catch((e) => { if (code(e) !== "auth/user-not-found") throw e; });
       if (!active) await auth.revokeRefreshTokens(t.uid).catch((e) => { if (code(e) !== "auth/user-not-found") throw e; });
     }
-    return null;
-  });
-}
-
-/** Operations or master: move an advisor to another level. Logged in level_history; the weekly streaks restart. */
-export async function changeAdvisorLevel(idToken: string, advisorId: string, levelId: number, reason: string | null): Promise<ActionResult<null>> {
-  return run("change the level", async () => {
-    const me = await caller(idToken, ["operations", "master"]);
-    const db = adminDb();
-    const userRef = db.collection("users").doc(advisorId);
-    const levelRef = db.collection("levels").doc(String(levelId));
-    const note = reason?.trim().slice(0, 500) || null;
-    await db.runTransaction(async (tx) => {
-      const [u, level] = await Promise.all([tx.get(userRef), tx.get(levelRef)]);
-      if (u.data()?.role !== "advisor") throw new Refusal("Advisor not found.");
-      if (!level.exists) throw new Refusal("Level not found.");
-      const from = u.data()!.level_id ?? null;
-      if (from === levelId) return;
-      tx.update(userRef, {
-        level_id: levelId,
-        "level_state.met_streak": 0,
-        "level_state.miss_streak": 0,
-        updated_at: FieldValue.serverTimestamp(),
-        updated_by: me.pid,
-      });
-      tx.create(db.collection("level_history").doc(), {
-        advisor_id: advisorId, from_level_id: from, to_level_id: levelId, changed_by: me.pid, reason: note,
-        source: "manual", changed_at: FieldValue.serverTimestamp(),
-      });
-    });
     return null;
   });
 }

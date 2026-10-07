@@ -3,7 +3,7 @@ import { after, before, beforeEach, describe, test } from "node:test";
 import { readFileSync } from "node:fs";
 import { assertFails, assertSucceeds, initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import {
-  collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where,
+  collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, orderBy, query, setDoc, Timestamp, updateDoc, where,
 } from "firebase/firestore";
 
 let env;
@@ -51,20 +51,17 @@ beforeEach(async () => {
     await Promise.all([
       setDoc(doc(db, "users/master"), person("master", "uid-master")),
       setDoc(doc(db, "users/ops"), person("operations", "uid-ops")),
-      setDoc(doc(db, "users/adv1"), person("advisor", "uid-adv1", { advisor_code: "ADV001", level_id: 1 })),
-      setDoc(doc(db, "users/adv2"), person("advisor", "uid-adv2", { advisor_code: "ADV002", level_id: 2 })),
-      setDoc(doc(db, "users/gone"), person("advisor", "uid-gone", { advisor_code: "ADV009", level_id: 1, active: false })),
-      setDoc(doc(db, "levels/1"), { name: "Level 1", target_letters: 200, sort_order: 1 }),
-      setDoc(doc(db, "levels/2"), { name: "Level 2", target_letters: 350, sort_order: 2 }),
+      setDoc(doc(db, "users/adv1"), person("advisor", "uid-adv1", { advisor_code: "ADV001" })),
+      setDoc(doc(db, "users/adv2"), person("advisor", "uid-adv2", { advisor_code: "ADV002" })),
+      setDoc(doc(db, "users/gone"), person("advisor", "uid-gone", { advisor_code: "ADV009", active: false })),
       setDoc(doc(db, "drops/d1"), drop("adv1")),
       setDoc(doc(db, "drops/d2"), drop("adv2")),
       setDoc(doc(db, "drops/dgone"), drop("gone")),
       setDoc(doc(db, "direct_leads/l1"), lead("adv1")),
       setDoc(doc(db, "direct_leads/l2"), lead("adv2")),
       setDoc(doc(db, "buildings/adv1__shivalik-shilp"), { advisor_id: "adv1", key: "shivalik-shilp", name: "Shivalik Shilp" }),
-      setDoc(doc(db, "level_history/h1"), { advisor_id: "adv1", from_level_id: 1, to_level_id: 2, changed_by: "weekly-job", changed_at: Timestamp.now() }),
-      setDoc(doc(db, "level_history/h2"), { advisor_id: "adv2", from_level_id: 2, to_level_id: 1, changed_by: "ops", changed_at: Timestamp.now() }),
-      setDoc(doc(db, "weekly_results/adv1_2026-09-21"), { advisor_id: "adv1", letters: 210 }),
+      // weekly_results is keyed by advisor and the week's Monday ("<advisor>_<monday>").
+      setDoc(doc(db, "weekly_results/adv1_2026-09-21"), { advisor_id: "adv1", letters: 210, belt: "yellow" }),
     ]);
   });
 });
@@ -78,12 +75,11 @@ describe("people who are not allowed in", () => {
       await assertFails(getDoc(doc(db, "drops/d1")));
       await assertFails(getDoc(doc(db, "drops/dgone")));
       await assertFails(getDocs(query(collection(db, "drops"), where("advisor_id", "==", "adv1"))));
-      await assertFails(getDocs(collection(db, "levels")));
       await assertFails(getDocs(collection(db, "direct_leads")));
+      await assertFails(getDocs(collection(db, "weekly_results")));
       await assertFails(setDoc(doc(db, "drops/new"), drop("adv1")));
       await assertFails(setDoc(doc(db, "drops/new2"), drop("gone")));
       await assertFails(setDoc(doc(db, "direct_leads/new"), lead("adv1")));
-      await assertFails(updateDoc(doc(db, "levels/1"), { target_letters: 1 }));
       await assertFails(setDoc(doc(db, "users/me"), person("master", "uid-visitor")));
     });
   }
@@ -174,7 +170,6 @@ describe("operations and master", () => {
       await assertSucceeds(getCountFromServer(query(collection(db, "drops"), where("responded", "==", true))));
       await assertSucceeds(getDocs(collection(db, "direct_leads")));
       await assertSucceeds(getDocs(collection(db, "buildings")));
-      await assertSucceeds(getDocs(collection(db, "level_history")));
       await assertSucceeds(getDocs(collection(db, "weekly_results")));
       await assertSucceeds(getDocs(query(collection(db, "users"), where("role", "==", "advisor"))));
       await assertFails(setDoc(doc(db, "drops/new"), drop("adv1")));
@@ -196,39 +191,20 @@ describe("operations and master", () => {
   });
 });
 
-describe("the access list, level history and weekly results are server-only", () => {
+describe("the access list and the weekly belt snapshot are server-only", () => {
   test("nobody writes them from the app", async () => {
     await assertFails(setDoc(doc(as.master(), "users/new-ops"), person("operations", "uid-new")));
     await assertFails(updateDoc(doc(as.master(), "users/ops"), { active: false }));
-    await assertFails(updateDoc(doc(as.ops(), "users/adv1"), { level_id: 2 }));
-    await assertFails(updateDoc(doc(as.adv1(), "users/adv1"), { level_id: 3 }));
-    await assertFails(setDoc(doc(as.ops(), "level_history/x"), { advisor_id: "adv1", from_level_id: 1, to_level_id: 2 }));
-    await assertFails(setDoc(doc(as.master(), "weekly_results/x"), { advisor_id: "adv1" }));
+    await assertFails(updateDoc(doc(as.ops(), "users/adv1"), { region: "Rajkot" }));
+    await assertFails(updateDoc(doc(as.adv1(), "users/adv1"), { region: "Rajkot" }));
+    await assertFails(setDoc(doc(as.master(), "weekly_results/x"), { advisor_id: "adv1", belt: "green" }));
+    await assertFails(updateDoc(doc(as.ops(), "weekly_results/adv1_2026-09-21"), { belt: "green" }));
   });
-  test("advisors read only their own level history and weekly results", async () => {
+  test("advisors read only their own weekly results", async () => {
     const db = as.adv1();
-    await assertSucceeds(getDocs(query(collection(db, "level_history"), where("advisor_id", "==", "adv1"))));
-    await assertFails(getDocs(collection(db, "level_history")));
-    await assertFails(getDoc(doc(db, "level_history/h2")));
     await assertSucceeds(getDoc(doc(db, "weekly_results/adv1_2026-09-21")));
-  });
-});
-
-describe("target levels", () => {
-  const edit = (db, fields) => updateDoc(doc(db, "levels/1"), { updated_at: serverTimestamp(), ...fields });
-  test("operations and master edit the weekly target, and only that", async () => {
-    await assertSucceeds(edit(as.ops(), { target_letters: 250, updated_by: "ops" }));
-    await assertSucceeds(edit(as.master(), { target_letters: 220, updated_by: "master" }));
-    await assertFails(edit(as.ops(), { target_letters: 0, updated_by: "ops" }));
-    await assertFails(edit(as.ops(), { target_letters: "300", updated_by: "ops" }));
-    await assertFails(edit(as.ops(), { target_letters: 250, updated_by: "master" }), "must sign their own change");
-    await assertFails(edit(as.ops(), { name: "Gold", updated_by: "ops" }));
-    await assertFails(setDoc(doc(as.ops(), "levels/4"), { name: "Level 4", target_letters: 800, sort_order: 4 }));
-    await assertFails(deleteDoc(doc(as.master(), "levels/2")));
-  });
-  test("advisors can read levels but not change them", async () => {
-    await assertSucceeds(getDocs(collection(as.adv1(), "levels")));
-    await assertFails(edit(as.adv1(), { target_letters: 10, updated_by: "adv1" }));
+    await assertSucceeds(getDocs(query(collection(db, "weekly_results"), where("advisor_id", "==", "adv1"))));
+    await assertFails(getDocs(collection(db, "weekly_results")));
   });
 });
 

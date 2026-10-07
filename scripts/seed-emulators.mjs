@@ -26,20 +26,15 @@ const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0
 const daysAgo = (n) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d; };
 const created = Timestamp.fromDate(daysAgo(60));
 
-const LEVELS = [
-  { id: "1", name: "Level 1", target_letters: 200, sort_order: 1 },
-  { id: "2", name: "Level 2", target_letters: 350, sort_order: 2 },
-  { id: "3", name: "Level 3", target_letters: 500, sort_order: 3 },
-];
 const person = (role, full_name, email, extra = {}) => ({
-  role, full_name, email, advisor_code: null, region: null, level_id: null, active: true, uid: null, created_at: created, ...extra,
+  role, full_name, email, advisor_code: null, region: null, active: true, uid: null, created_at: created, ...extra,
 });
 const PEOPLE = {
   "u-master": person("master", "Master Admin", "master@example.com"),
   "u-ops": person("operations", "Ops Admin", "ops@example.com"),
-  "u-adv1": person("advisor", "Riya Shah", "riya.shah@example.com", { advisor_code: "ADV001", region: "Ahmedabad West", level_id: 1 }),
-  "u-adv2": person("advisor", "Karan Mehta", "karan.mehta@example.com", { advisor_code: "ADV002", region: "Surat", level_id: 2 }),
-  "u-adv3": person("advisor", "Neha Desai", "neha.desai@example.com", { advisor_code: "ADV003", region: "Vadodara", level_id: 1 }),
+  "u-adv1": person("advisor", "Riya Shah", "riya.shah@example.com", { advisor_code: "ADV001", region: "Ahmedabad West" }),
+  "u-adv2": person("advisor", "Karan Mehta", "karan.mehta@example.com", { advisor_code: "ADV002", region: "Surat" }),
+  "u-adv3": person("advisor", "Neha Desai", "neha.desai@example.com", { advisor_code: "ADV003", region: "Vadodara" }),
 };
 const BUILDINGS = {
   Ahmedabad: [["Shivalik Shilp", "Satellite"], ["Titanium City Centre", "Prahlad Nagar"], ["Westgate", "SG Highway"]],
@@ -54,7 +49,6 @@ const rand = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 429496
 const pick = (xs) => xs[Math.floor(rand() * xs.length)];
 
 const writer = db.bulkWriter();
-for (const l of LEVELS) writer.set(db.doc(`levels/${l.id}`), { name: l.name, target_letters: l.target_letters, sort_order: l.sort_order });
 for (const [id, p] of Object.entries(PEOPLE)) writer.set(db.doc(`users/${id}`), p);
 
 let count = 0;

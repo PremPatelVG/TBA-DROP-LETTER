@@ -1,7 +1,7 @@
 /**
  * Belt ranking for advisors, based on the number of drop entries in the current competition week
- * (entries this week; see currentWeek() in src/lib/stats.ts — the week runs Sunday 12:00 noon to the
- * following Sunday 12:00 noon, IST). One drop entry is one letter.
+ * (entries this week; see currentWeek() in src/lib/stats.ts — the week runs Monday 09:00 to the
+ * following Monday 09:00, IST). One drop entry is one letter.
  *
  * To rank on all-time totals instead of this week later, pass the all-time entry count to beltFor()/
  * nextBelt() in place of the weekly count; the thresholds below do not change.

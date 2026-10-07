@@ -38,19 +38,19 @@ export function lastMonths(n = 6, now = new Date()) {
 }
 
 /**
- * The competition week runs Sunday 12:00 (noon) to the following Sunday 12:00 (noon), Asia/Kolkata (IST).
- * `currentWeek` returns it as YYYY-MM-DD strings {start, end}: `start` is the week's Sunday and `end` is the
- * following Saturday, so the window covers the seven dates Sunday..Saturday and the usual
+ * The competition week runs Monday 09:00 to the following Monday 09:00, Asia/Kolkata (IST).
+ * `currentWeek` returns it as YYYY-MM-DD strings {start, end}: `start` is the week's Monday and `end` is the
+ * following Sunday, so the window covers the seven dates Monday..Sunday and the usual
  * `drop_date >= start && drop_date <= end` counting keeps working. One drop entry is one letter.
  *
- * The scheduled weekly job (functions/src/levels/rules.ts) uses the same Sunday-noon IST boundary, so the
+ * The scheduled weekly job (functions/src/weekly/week.ts) uses the same Monday-09:00 IST boundary, so the
  * belt leaderboard's "this week" count and the job's finalised week agree.
  */
 export const WEEK_TIME_ZONE = "Asia/Kolkata";
-// Shifting an instant back 12 hours turns the Sunday-noon boundary into a Sunday-midnight one, so the week it
-// falls in can be found with plain date arithmetic on the IST calendar date. Before noon on a Sunday we are
-// therefore still in the week that began the previous Sunday.
-const NOON_SHIFT_MS = 12 * 60 * 60 * 1000;
+// Shifting an instant back 9 hours turns the Monday-09:00 boundary into a Monday-midnight one, so the week it
+// falls in can be found with plain date arithmetic on the IST calendar date. Before 09:00 on a Monday we are
+// therefore still in the week that began the previous Monday.
+const MORNING_SHIFT_MS = 9 * 60 * 60 * 1000;
 const WEEK_DAY_MS = 86_400_000;
 
 /** The calendar date of an instant in IST, as YYYY-MM-DD. */
@@ -60,11 +60,11 @@ function istDate(at: Date) {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 const addDaysYmd = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * WEEK_DAY_MS).toISOString().slice(0, 10);
-/** The Sunday on or before `date` (weeks are Sunday-led). */
-const sundayOf = (date: string) => addDaysYmd(date, -new Date(`${date}T00:00:00Z`).getUTCDay());
+/** The Monday on or before `date` (weeks are Monday-led). */
+const mondayOf = (date: string) => addDaysYmd(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
 
 export function currentWeek(now = new Date()) {
-  const start = sundayOf(istDate(new Date(now.getTime() - NOON_SHIFT_MS)));
+  const start = mondayOf(istDate(new Date(now.getTime() - MORNING_SHIFT_MS)));
   return { start, end: addDaysYmd(start, 6) };
 }
 export const inWeek = (date: string, w: { start: string; end: string }) => date >= w.start && date <= w.end;

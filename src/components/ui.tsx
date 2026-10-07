@@ -43,7 +43,6 @@ const ADMIN_NAV = [
   { href: "/ops", label: "Dashboard" },
   { href: "/ops/drops", label: "All drops" },
   { href: "/ops/advisors", label: "Advisors" },
-  { href: "/ops/levels", label: "Target levels" },
 ];
 const MASTER_NAV = [{ href: "/master", label: "Operations accounts" }];
 

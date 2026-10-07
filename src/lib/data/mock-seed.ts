@@ -1,17 +1,15 @@
 import { currentWeek } from "@/lib/stats";
-import type { DemoAccount, Drop, Lead, LevelChange, Level, Profile } from "./types";
+import type { DemoAccount, Drop, Lead, Profile } from "./types";
 
 export type MockDb = {
   version: number;
   profiles: Profile[];
-  levels: Level[];
-  levelHistory: LevelChange[];
   drops: Drop[];
   leads: Lead[];
 };
 
 /** Bump when the shape or volume of the sample data changes; old browser data is then replaced. */
-export const MOCK_VERSION = 6;
+export const MOCK_VERSION = 7;
 
 /** A Google account that is not on the access list, to show the "not authorised" screen. */
 export const DEMO_UNLISTED: DemoAccount = { email: "visitor@example.com", name: "Visitor", note: "Not on the list" };
@@ -62,21 +60,21 @@ const DOMAINS = [".com", ".in", ".co.in"];
 
 /**
  * Sample advisors. DEMO DATA ONLY — this does not change the real belt thresholds, the weekly count, or the
- * competition week (Sunday noon to Sunday noon IST). `week` is how many entries the advisor has IN THE CURRENT
+ * competition week (Monday 09:00 to Monday 09:00 IST). `week` is how many entries the advisor has IN THE CURRENT
  * competition week, chosen so the belt leaderboard always shows the full spread the moment the owner opens the
  * demo, whatever day it is: two advisors land squarely in each belt — Red (<200), Yellow (200-349),
  * Blue (350-500), Green (501+). `base` is a modest weekly pace for the back-history (month chart + totals).
  */
-type AdvisorSpec = { id: string; name: string; code: string; region: string; city: string; level_id: number; week: number; base: number };
+type AdvisorSpec = { id: string; name: string; code: string; region: string; city: string; week: number; base: number };
 const ADVISORS: AdvisorSpec[] = [
-  { id: "u-adv2", name: "Karan Mehta", code: "ADV002", region: "Surat", city: "Surat", level_id: 3, week: 650, base: 38 }, // Green
-  { id: "u-adv4", name: "Priya Patel", code: "ADV004", region: "Ahmedabad East", city: "Ahmedabad", level_id: 3, week: 560, base: 34 }, // Green
-  { id: "u-adv5", name: "Rohan Joshi", code: "ADV005", region: "Surat City", city: "Surat", level_id: 2, week: 470, base: 28 }, // Blue
-  { id: "u-adv1", name: "Riya Shah", code: "ADV001", region: "Ahmedabad West", city: "Ahmedabad", level_id: 2, week: 400, base: 26 }, // Blue
-  { id: "u-adv6", name: "Ananya Iyer", code: "ADV006", region: "Vadodara East", city: "Vadodara", level_id: 2, week: 320, base: 20 }, // Yellow
-  { id: "u-adv7", name: "Vikram Shah", code: "ADV007", region: "Gandhinagar", city: "Ahmedabad", level_id: 1, week: 250, base: 16 }, // Yellow
-  { id: "u-adv3", name: "Neha Desai", code: "ADV003", region: "Vadodara", city: "Vadodara", level_id: 1, week: 180, base: 13 }, // Red
-  { id: "u-adv8", name: "Meera Trivedi", code: "ADV008", region: "Surat South", city: "Surat", level_id: 1, week: 120, base: 10 }, // Red
+  { id: "u-adv2", name: "Karan Mehta", code: "ADV002", region: "Surat", city: "Surat", week: 650, base: 38 }, // Green
+  { id: "u-adv4", name: "Priya Patel", code: "ADV004", region: "Ahmedabad East", city: "Ahmedabad", week: 560, base: 34 }, // Green
+  { id: "u-adv5", name: "Rohan Joshi", code: "ADV005", region: "Surat City", city: "Surat", week: 470, base: 28 }, // Blue
+  { id: "u-adv1", name: "Riya Shah", code: "ADV001", region: "Ahmedabad West", city: "Ahmedabad", week: 400, base: 26 }, // Blue
+  { id: "u-adv6", name: "Ananya Iyer", code: "ADV006", region: "Vadodara East", city: "Vadodara", week: 320, base: 20 }, // Yellow
+  { id: "u-adv7", name: "Vikram Shah", code: "ADV007", region: "Gandhinagar", city: "Ahmedabad", week: 250, base: 16 }, // Yellow
+  { id: "u-adv3", name: "Neha Desai", code: "ADV003", region: "Vadodara", city: "Vadodara", week: 180, base: 13 }, // Red
+  { id: "u-adv8", name: "Meera Trivedi", code: "ADV008", region: "Surat South", city: "Surat", week: 120, base: 10 }, // Red
 ];
 const HISTORY_WEEKS = 16;
 const IST_OFFSET_MIN = 330; // Asia/Kolkata is UTC+5:30
@@ -101,22 +99,17 @@ function istDate(at: Date) {
 
 export function buildSeed(): MockDb {
   const now = new Date();
-  const week = currentWeek(now); // { start: this week's Sunday, end: the following Saturday }, IST
+  const week = currentWeek(now); // { start: this week's Monday, end: the following Sunday }, IST
   const todayStr = istDate(now);
   const createdIso = (daysAgo: number) => new Date(parseYmd(addDays(todayStr, -daysAgo)) + 9 * 3600000).toISOString();
 
   const profiles: Profile[] = [
-    { id: "u-master", role: "master", full_name: "Master Admin", email: "master@example.com", advisor_code: null, region: null, level_id: null, active: true, created_at: createdIso(120) },
-    { id: "u-ops", role: "operations", full_name: "Ops Admin", email: "ops@example.com", advisor_code: null, region: null, level_id: null, active: true, created_at: createdIso(120) },
+    { id: "u-master", role: "master", full_name: "Master Admin", email: "master@example.com", advisor_code: null, region: null, active: true, created_at: createdIso(120) },
+    { id: "u-ops", role: "operations", full_name: "Ops Admin", email: "ops@example.com", advisor_code: null, region: null, active: true, created_at: createdIso(120) },
     ...ADVISORS.map((a): Profile => ({
       id: a.id, role: "advisor", full_name: a.name, email: `${a.name.toLowerCase().replace(/[^a-z]/g, ".")}@example.com`,
-      advisor_code: a.code, region: a.region, level_id: a.level_id, active: true, created_at: createdIso(90),
+      advisor_code: a.code, region: a.region, active: true, created_at: createdIso(90),
     })),
-  ];
-  const levels: Level[] = [
-    { id: 1, name: "Level 1", target_letters: 200, sort_order: 1 },
-    { id: 2, name: "Level 2", target_letters: 350, sort_order: 2 },
-    { id: 3, name: "Level 3", target_letters: 500, sort_order: 3 },
   ];
 
   const rand = rng(42);
@@ -197,9 +190,9 @@ export function buildSeed(): MockDb {
     });
   }
 
-  // Current competition week: fill each advisor's full target, dated across the week's working days up to today
-  // (so the belt spread is already there whenever the demo is opened, but no entries are dated in the future).
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(week.start, i)); // Sunday..Saturday
+  // Current competition week: fill each advisor's full weekly entries, dated across the week's working days up to
+  // today (so the belt spread is already there whenever the demo is opened, but no entries are dated in the future).
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(week.start, i)); // Monday..Sunday
   const upToToday = weekDays.filter((d) => d <= todayStr);
   const workingSoFar = upToToday.filter((d) => weekday(d) !== 0); // advisors work Mon-Sat
   const currentDays = workingSoFar.length ? workingSoFar : upToToday;
@@ -208,8 +201,8 @@ export function buildSeed(): MockDb {
   // Back-history for the month-wise chart and all-time totals: a modest, tapering weekly pace.
   for (const a of ADVISORS) {
     for (let w = 1; w <= HISTORY_WEEKS; w++) {
-      const ws = addDays(week.start, -7 * w);
-      const days = Array.from({ length: 6 }, (_, i) => addDays(ws, i + 1)); // Mon..Sat of that past week
+      const ws = addDays(week.start, -7 * w); // the Monday of that past week
+      const days = Array.from({ length: 6 }, (_, i) => addDays(ws, i)); // Mon..Sat of that past week
       generate(a.id, a.city, days, Math.round(a.base * Math.max(0.2, 1 - 0.05 * (w - 1))));
     }
   }
@@ -229,12 +222,6 @@ export function buildSeed(): MockDb {
   return {
     version: MOCK_VERSION,
     profiles,
-    levels,
-    levelHistory: [
-      { id: "lh-1", advisor_id: "u-adv2", from_level_id: 1, to_level_id: 2, changed_by: "u-ops", reason: "Crossed 200 letters a week for a month", changed_at: createdIso(56) },
-      { id: "lh-2", advisor_id: "u-adv2", from_level_id: 2, to_level_id: 3, changed_by: "weekly-job", reason: "Met the Level 2 target (350 letters a week) 4 weeks in a row", changed_at: createdIso(21) },
-      { id: "lh-3", advisor_id: "u-adv4", from_level_id: 2, to_level_id: 3, changed_by: "weekly-job", reason: "Met the Level 2 target (350 letters a week) 4 weeks in a row", changed_at: createdIso(14) },
-    ],
     drops,
     leads: [
       { id: "l-1", advisor_id: "u-adv1", drop_id: respondedRiya?.id ?? null, contact_name: "Mr. Patel", company_name: respondedRiya?.company_name ?? "Shree Traders",

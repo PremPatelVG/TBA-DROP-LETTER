@@ -4,8 +4,8 @@ import { buildSeed, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
-const DB_KEY = "tba.mock.db.v6";
-const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5"];
+const DB_KEY = "tba.mock.db.v7";
+const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6"];
 const SESSION_KEY = "tba.mock.session.email";
 
 let memory: MockDb | null = null;
@@ -122,8 +122,7 @@ export const mockApi: DataApi = {
     const email = cleanEmail(input.email);
     if (db.profiles.some((p) => p.advisor_code === code)) throw new Error(`Advisor ID ${code} already exists.`);
     if (db.profiles.some((p) => p.email === email)) throw new Error(`${email} is already on the list.`);
-    const first = [...db.levels].sort((a, b) => a.sort_order - b.sort_order)[0];
-    const p: Profile = { id: uid("u"), role: "advisor", full_name: input.full_name.trim(), email, advisor_code: code, region: input.region.trim(), level_id: first?.id ?? null, active: true, created_at: new Date().toISOString() };
+    const p: Profile = { id: uid("u"), role: "advisor", full_name: input.full_name.trim(), email, advisor_code: code, region: input.region.trim(), active: true, created_at: new Date().toISOString() };
     db.profiles.push(p);
     save();
     return wait(p);
@@ -137,7 +136,7 @@ export const mockApi: DataApi = {
     const db = load();
     const email = cleanEmail(input.email);
     if (db.profiles.some((p) => p.email === email)) throw new Error(`${email} is already on the list.`);
-    const p: Profile = { id: uid("u"), role: "operations", full_name: input.full_name.trim(), email, advisor_code: null, region: null, level_id: null, active: true, created_at: new Date().toISOString() };
+    const p: Profile = { id: uid("u"), role: "operations", full_name: input.full_name.trim(), email, advisor_code: null, region: null, active: true, created_at: new Date().toISOString() };
     db.profiles.push(p);
     save();
     return wait(p);
@@ -228,28 +227,6 @@ export const mockApi: DataApi = {
           weekEntries: db.drops.filter((d) => d.advisor_id === a.id && d.drop_date >= week.start && d.drop_date <= week.end).length,
         })),
     );
-  },
-
-  async listLevels() { return wait(load().levels.slice().sort((a, b) => a.sort_order - b.sort_order)); },
-  async updateLevelTarget(id, target) {
-    requireOps();
-    const l = load().levels.find((x) => x.id === id);
-    if (!l) throw new Error("Level not found");
-    l.target_letters = target;
-    save();
-  },
-  async changeAdvisorLevel(advisorId, levelId, reason) {
-    const ops = requireOps();
-    const db = load();
-    const a = db.profiles.find((p) => p.id === advisorId);
-    if (!a) throw new Error("Advisor not found");
-    if (a.level_id === levelId) return;
-    db.levelHistory.push({ id: uid("lh"), advisor_id: advisorId, from_level_id: a.level_id, to_level_id: levelId, changed_by: ops.id, reason, changed_at: new Date().toISOString() });
-    a.level_id = levelId;
-    save();
-  },
-  async listLevelHistory(advisorId) {
-    return wait(visible(load().levelHistory, advisorId).slice().sort((a, b) => b.changed_at.localeCompare(a.changed_at)));
   },
 
   async listLeads() {

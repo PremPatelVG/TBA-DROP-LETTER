@@ -6,7 +6,7 @@ rules_version = '2';
 // claims { role, pid } (set by the server in src/app/actions.ts). Every rule also re-reads that access
 // entry, so deactivating someone takes effect at once, even while their sign-in token is still valid.
 // People who are not on the list have no claims and can read or write nothing.
-// Access-list entries, level history and weekly results are written only by the server (Admin SDK).
+// Access-list entries and the weekly belt snapshot (weekly_results) are written only by the server (Admin SDK).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -128,25 +128,9 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------- target levels ----------
+    // ---------- weekly belt snapshot ----------
 
-    match /levels/{levelId} {
-      allow read: if listed();
-      // Operations and master may change a level's weekly target, and nothing else.
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['target_letters', 'updated_by', 'updated_at'])
-        && request.resource.data.target_letters is int
-        && request.resource.data.target_letters >= 1 && request.resource.data.target_letters <= 100000
-        && request.resource.data.updated_by == me()
-        && request.resource.data.updated_at == request.time;
-      allow create, delete: if false;
-    }
-
-    match /level_history/{changeId} {
-      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
-      allow write: if false;
-    }
-
+    // One record per advisor and competition week ("<advisor>_<monday>"), written only by the scheduled job.
     match /weekly_results/{resultId} {
       allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
       allow write: if false;

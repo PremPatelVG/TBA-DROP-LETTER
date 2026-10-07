@@ -1,7 +1,7 @@
 {
   "name": "tba-drop-letter-functions",
   "private": true,
-  "description": "Scheduled Cloud Functions for TBA Drop Letter (weekly level check)",
+  "description": "Scheduled Cloud Functions for TBA Drop Letter (weekly belt snapshot)",
   "main": "lib/index.js",
   "engines": {
     "node": "22"

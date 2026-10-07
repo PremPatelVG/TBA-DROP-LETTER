@@ -15,7 +15,6 @@ import OpsLayout from "@/app/ops/layout";
 import OpsHome from "@/app/ops/page";
 import OpsDrops from "@/app/ops/drops/page";
 import OpsAdvisors from "@/app/ops/advisors/page";
-import OpsLevels from "@/app/ops/levels/page";
 import MasterLayout from "@/app/master/layout";
 import MasterHome from "@/app/master/page";
 
@@ -31,7 +30,6 @@ const routes: Route[] = [
   { pattern: /^\/ops$/, layout: OpsLayout, page: OpsHome },
   { pattern: /^\/ops\/drops$/, layout: OpsLayout, page: OpsDrops },
   { pattern: /^\/ops\/advisors$/, layout: OpsLayout, page: OpsAdvisors },
-  { pattern: /^\/ops\/levels$/, layout: OpsLayout, page: OpsLevels },
   { pattern: /^\/master$/, layout: MasterLayout, page: MasterHome },
 ];
 

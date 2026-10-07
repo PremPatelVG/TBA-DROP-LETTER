@@ -7,7 +7,6 @@ import {
   limit as take,
   orderBy,
   query,
-  serverTimestamp,
   setDoc,
   startAfter,
   Timestamp,
@@ -30,7 +29,6 @@ import {
 } from "firebase/auth";
 import { clearLocalData, clientAuth, clientDb } from "@/lib/firebase/client";
 import {
-  changeAdvisorLevel as changeAdvisorLevelAction,
   claimAccess,
   createAdvisor as createAdvisorAction,
   createOpsUser as createOpsUserAction,
@@ -41,14 +39,14 @@ import {
 import { buildingKey, cityKey, dropIndexTokens, matchesDropSearch, matchesPlace, MAX_TOKEN_LENGTH, queryToken, searchTerms } from "@/lib/search";
 import { lastMonths } from "@/lib/stats";
 import { responseContactError } from "@/lib/validate";
-import type { AccessResult, AdvisorSummary, BuildingRef, DataApi, Drop, DropFilter, Lead, LeaderboardRow, Level, LevelChange, Profile } from "./types";
+import type { AccessResult, AdvisorSummary, BuildingRef, DataApi, Drop, DropFilter, Lead, LeaderboardRow, Profile } from "./types";
 
 /*
  * Firebase implementation of the data layer: Google sign-in (Firebase Auth) and Firestore.
  * Who may read or write what is enforced by firestore.rules; this file only asks for what the rules allow.
  *
  * Collections: users (the access list), drops, direct_leads, buildings (one per advisor and building, for
- * filters and "buildings covered"), levels, level_history, weekly_results (written by the weekly job).
+ * filters and "buildings covered"), weekly_results (the weekly belt snapshot, written by the scheduled job).
  *
  * Search: every drop stores `search_tokens` (see src/lib/search.ts). A query can use one array-contains,
  * so Firestore gets the longest search word (or the building, or the city) and any other words or filters
@@ -93,7 +91,7 @@ function toProfile(snap: DocumentSnapshot): Profile {
   const d = snap.data() ?? {};
   return {
     id: snap.id, role: d.role, full_name: d.full_name ?? "", email: d.email ?? "", advisor_code: d.advisor_code ?? null,
-    region: d.region ?? null, level_id: typeof d.level_id === "number" ? d.level_id : null, active: d.active === true, created_at: iso(d.created_at),
+    region: d.region ?? null, active: d.active === true, created_at: iso(d.created_at),
   };
 }
 
@@ -516,31 +514,6 @@ export const firebaseApi: DataApi = {
         return { advisorId: p.id, full_name: p.full_name, advisor_code: p.advisor_code, region: p.region, weekEntries };
       }),
     );
-  },
-
-  // ----- levels -----
-
-  async listLevels() {
-    const snap = await getDocs(collection(clientDb(), "levels"));
-    return snap.docs
-      .map((d): Level => ({ id: Number(d.id), name: d.data().name, target_letters: d.data().target_letters, sort_order: d.data().sort_order }))
-      .sort((a, b) => a.sort_order - b.sort_order);
-  },
-  async updateLevelTarget(id, target) {
-    await settle(updateDoc(doc(clientDb(), "levels", String(id)), { target_letters: target, updated_by: profile().id, updated_at: serverTimestamp() }));
-  },
-  async changeAdvisorLevel(advisorId, levelId, reason) {
-    unwrap(await changeAdvisorLevelAction(await idToken(), advisorId, levelId, reason));
-  },
-  async listLevelHistory(advisorId) {
-    const p = profile();
-    const id = p.role === "advisor" ? p.id : advisorId;
-    const c = collection(clientDb(), "level_history");
-    const snap = await getDocs(id ? query(c, where("advisor_id", "==", id), orderBy("changed_at", "desc"), take(200)) : query(c, orderBy("changed_at", "desc"), take(200)));
-    return snap.docs.map((d): LevelChange => {
-      const x = d.data({ serverTimestamps: "estimate" });
-      return { id: d.id, advisor_id: x.advisor_id, from_level_id: x.from_level_id ?? null, to_level_id: x.to_level_id, changed_by: x.changed_by ?? null, reason: x.reason ?? null, changed_at: iso(x.changed_at) };
-    });
   },
 
   // ----- direct leads -----

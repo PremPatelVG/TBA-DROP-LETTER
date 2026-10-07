@@ -173,20 +173,6 @@
           "order": "DESCENDING"
         }
       ]
-    },
-    {
-      "collectionGroup": "level_history",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "advisor_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "changed_at",
-          "order": "DESCENDING"
-        }
-      ]
     }
   ],
   "fieldOverrides": [
