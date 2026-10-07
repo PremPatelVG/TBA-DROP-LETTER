@@ -83,8 +83,10 @@ const db = getFirestore();
 try {
   const found = await db.collection("users").where("email", "==", email).limit(1).get();
   if (found.empty) {
+    // Master is unrestricted (no franchise scope): it sees every region. Only operations accounts carry a scope.
     await db.collection("users").add({
-      role: "master", full_name: name, email, advisor_code: null, region: null, active: true, uid: null,
+      role: "master", full_name: name, email, advisor_code: null,
+      city: null, state: null, zip: null, scope_type: null, scope_value: null, active: true, uid: null,
       created_at: FieldValue.serverTimestamp(), created_by: "create-master script",
     });
   } else {

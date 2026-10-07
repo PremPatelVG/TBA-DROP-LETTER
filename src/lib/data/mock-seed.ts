@@ -9,13 +9,15 @@ export type MockDb = {
 };
 
 /** Bump when the shape or volume of the sample data changes; old browser data is then replaced. */
-export const MOCK_VERSION = 7;
+export const MOCK_VERSION = 8;
 
 /** A Google account that is not on the access list, to show the "not authorised" screen. */
 export const DEMO_UNLISTED: DemoAccount = { email: "visitor@example.com", name: "Visitor", note: "Not on the list" };
 
 type Building = { name: string; area: string; address: string; blocks: string[] };
 
+// Sample buildings per city. Advisors leave letters in the city they are based in, so these cover the demo
+// cities: Rajkot and Ahmedabad (Gujarat) and Mumbai (Maharashtra).
 const BUILDINGS: Record<string, Building[]> = {
   Ahmedabad: [
     { name: "Shivalik Shilp", area: "Satellite", address: "Iscon Cross Rd, Satellite", blocks: ["A", "B"] },
@@ -23,27 +25,26 @@ const BUILDINGS: Record<string, Building[]> = {
     { name: "Mondeal Heights", area: "SG Highway", address: "Near Wide Angle, SG Highway", blocks: ["1", "2"] },
     { name: "Iscon Emporio", area: "Satellite", address: "Star Bazaar Cross Rd, Satellite", blocks: ["A"] },
     { name: "Venus Atlantis", area: "Prahlad Nagar", address: "Corporate Rd, Prahlad Nagar", blocks: ["A", "B"] },
-    { name: "Safal Pegasus", area: "Prahlad Nagar", address: "100 Ft Rd, Prahlad Nagar", blocks: ["A", "B"] },
     { name: "Westgate", area: "SG Highway", address: "Near YMCA Club, SG Highway", blocks: ["A", "B", "C", "D"] },
     { name: "Sun Westbank", area: "Ashram Road", address: "Near Vallabh Sadan, Ashram Rd", blocks: ["1"] },
-    { name: "Ratnaakar Nine Square", area: "Vastrapur", address: "Opp. Keshavbaug Party Plot, Vastrapur", blocks: ["A", "B"] },
     { name: "Pinnacle Business Park", area: "Corporate Road", address: "Corporate Rd, Prahlad Nagar", blocks: ["1", "2"] },
   ],
-  Surat: [
-    { name: "International Trade Centre", area: "Majura Gate", address: "Ring Rd, Majura Gate", blocks: ["A", "B"] },
-    { name: "Rajhans Montessa", area: "Dumas Road", address: "Dumas Rd, Magdalla", blocks: ["1", "2"] },
-    { name: "Laxmi Enclave", area: "Katargam", address: "Gajera Circle, Katargam", blocks: ["A"] },
-    { name: "Silver Business Point", area: "Utran", address: "VIP Circle, Utran", blocks: ["A", "B"] },
-    { name: "Pramukh Tangent", area: "Sarthana", address: "Sarthana Jakatnaka", blocks: ["1"] },
-    { name: "Belgium Square", area: "Delhi Gate", address: "Ring Rd, Delhi Gate", blocks: ["A", "B", "C"] },
-    { name: "Rajhans Platinum", area: "Adajan", address: "Adajan Patiya", blocks: ["A"] },
+  Rajkot: [
+    { name: "Crystal Mall", area: "Kalawad Road", address: "Kalawad Rd, Rajkot", blocks: ["A", "B"] },
+    { name: "Imperial Heights", area: "150 Ft Ring Road", address: "150 Ft Ring Rd, Rajkot", blocks: ["A", "B", "C"] },
+    { name: "Shivalik Business Park", area: "Nana Mava", address: "Nana Mava Main Rd", blocks: ["1", "2"] },
+    { name: "RK Supreme", area: "Kalawad Road", address: "Near Nirmala School, Kalawad Rd", blocks: ["A"] },
+    { name: "The Spire", area: "University Road", address: "University Rd, Rajkot", blocks: ["A", "B"] },
+    { name: "Nilkanth Residency", area: "Mavdi", address: "Mavdi Main Rd", blocks: ["1"] },
+    { name: "Madhav Plaza", area: "Yagnik Road", address: "Yagnik Rd, Rajkot", blocks: ["A", "B", "C"] },
   ],
-  Vadodara: [
-    { name: "Alkapuri Arcade", area: "Alkapuri", address: "RC Dutt Rd, Alkapuri", blocks: ["A"] },
-    { name: "Earth Arise", area: "Sama", address: "Sama-Savli Rd", blocks: ["A", "B"] },
-    { name: "Siddharth Complex", area: "Race Course", address: "Race Course Circle", blocks: ["1", "2"] },
-    { name: "Atlantis K10", area: "Sarabhai Campus", address: "Genda Circle", blocks: ["A", "B"] },
-    { name: "Iscon Janmahal", area: "Sayajigunj", address: "Opp. Railway Station, Sayajigunj", blocks: ["1"] },
+  Mumbai: [
+    { name: "Nariman Point Tower", area: "Nariman Point", address: "Nariman Point, Mumbai", blocks: ["A", "B"] },
+    { name: "Bandra Kurla One", area: "BKC", address: "Bandra Kurla Complex", blocks: ["1", "2", "3"] },
+    { name: "Lower Parel Square", area: "Lower Parel", address: "Senapati Bapat Marg", blocks: ["A", "B"] },
+    { name: "Andheri Trade Hub", area: "Andheri East", address: "Chakala, Andheri East", blocks: ["A"] },
+    { name: "Powai Techpark", area: "Powai", address: "Hiranandani Gardens, Powai", blocks: ["1", "2"] },
+    { name: "Fort Chambers", area: "Fort", address: "Dadabhai Naoroji Rd, Fort", blocks: ["A", "B"] },
   ],
 };
 
@@ -65,16 +66,24 @@ const DOMAINS = [".com", ".in", ".co.in"];
  * demo, whatever day it is: two advisors land squarely in each belt — Red (<200), Yellow (200-349),
  * Blue (350-500), Green (501+). `base` is a modest weekly pace for the back-history (month chart + totals).
  */
-type AdvisorSpec = { id: string; name: string; code: string; region: string; city: string; week: number; base: number };
+type AdvisorSpec = { id: string; name: string; code: string; city: string; state: string; zip: string; week: number; base: number };
+// Advisors across two states (Gujarat: Rajkot + Ahmedabad; Maharashtra: Mumbai), each city spanning several belts,
+// so the franchise scoping is visible: a Rajkot city manager sees the Rajkot spread, a Gujarat state manager sees
+// Rajkot + Ahmedabad (all four belts) but not Mumbai, and the master sees everyone.
+const GUJARAT = "Gujarat";
+const MAHARASHTRA = "Maharashtra";
 const ADVISORS: AdvisorSpec[] = [
-  { id: "u-adv2", name: "Karan Mehta", code: "ADV002", region: "Surat", city: "Surat", week: 650, base: 38 }, // Green
-  { id: "u-adv4", name: "Priya Patel", code: "ADV004", region: "Ahmedabad East", city: "Ahmedabad", week: 560, base: 34 }, // Green
-  { id: "u-adv5", name: "Rohan Joshi", code: "ADV005", region: "Surat City", city: "Surat", week: 470, base: 28 }, // Blue
-  { id: "u-adv1", name: "Riya Shah", code: "ADV001", region: "Ahmedabad West", city: "Ahmedabad", week: 400, base: 26 }, // Blue
-  { id: "u-adv6", name: "Ananya Iyer", code: "ADV006", region: "Vadodara East", city: "Vadodara", week: 320, base: 20 }, // Yellow
-  { id: "u-adv7", name: "Vikram Shah", code: "ADV007", region: "Gandhinagar", city: "Ahmedabad", week: 250, base: 16 }, // Yellow
-  { id: "u-adv3", name: "Neha Desai", code: "ADV003", region: "Vadodara", city: "Vadodara", week: 180, base: 13 }, // Red
-  { id: "u-adv8", name: "Meera Trivedi", code: "ADV008", region: "Surat South", city: "Surat", week: 120, base: 10 }, // Red
+  // Rajkot (Gujarat): Green, Blue, Red
+  { id: "u-adv2", name: "Dhruv Kacha", code: "ADV002", city: "Rajkot", state: GUJARAT, zip: "360001", week: 650, base: 38 }, // Green
+  { id: "u-adv5", name: "Isha Vora", code: "ADV005", city: "Rajkot", state: GUJARAT, zip: "360005", week: 420, base: 26 }, // Blue
+  { id: "u-adv8", name: "Manav Gondaliya", code: "ADV008", city: "Rajkot", state: GUJARAT, zip: "360002", week: 150, base: 11 }, // Red
+  // Ahmedabad (Gujarat): Green, Yellow, Red
+  { id: "u-adv1", name: "Riya Shah", code: "ADV001", city: "Ahmedabad", state: GUJARAT, zip: "380015", week: 560, base: 34 }, // Green
+  { id: "u-adv7", name: "Vikram Shah", code: "ADV007", city: "Ahmedabad", state: GUJARAT, zip: "380006", week: 250, base: 16 }, // Yellow
+  { id: "u-adv3", name: "Neha Desai", code: "ADV003", city: "Ahmedabad", state: GUJARAT, zip: "380054", week: 180, base: 13 }, // Red
+  // Mumbai (Maharashtra): Blue, Yellow
+  { id: "u-adv4", name: "Karan Mehta", code: "ADV004", city: "Mumbai", state: MAHARASHTRA, zip: "400021", week: 470, base: 28 }, // Blue
+  { id: "u-adv6", name: "Ananya Iyer", code: "ADV006", city: "Mumbai", state: MAHARASHTRA, zip: "400051", week: 300, base: 20 }, // Yellow
 ];
 const HISTORY_WEEKS = 16;
 const IST_OFFSET_MIN = 330; // Asia/Kolkata is UTC+5:30
@@ -103,12 +112,19 @@ export function buildSeed(): MockDb {
   const todayStr = istDate(now);
   const createdIso = (daysAgo: number) => new Date(parseYmd(addDays(todayStr, -daysAgo)) + 9 * 3600000).toISOString();
 
+  const admin = (over: Partial<Profile> & Pick<Profile, "id" | "role" | "full_name" | "email">): Profile => ({
+    advisor_code: null, city: null, state: null, zip: null, scope_type: null, scope_value: null,
+    active: true, created_at: createdIso(120), ...over,
+  });
   const profiles: Profile[] = [
-    { id: "u-master", role: "master", full_name: "Master Admin", email: "master@example.com", advisor_code: null, region: null, active: true, created_at: createdIso(120) },
-    { id: "u-ops", role: "operations", full_name: "Ops Admin", email: "ops@example.com", advisor_code: null, region: null, active: true, created_at: createdIso(120) },
+    admin({ id: "u-master", role: "master", full_name: "Master Admin", email: "master@example.com" }),
+    // Two scoped operations accounts for the demo: one city (Rajkot), one whole state (Gujarat).
+    admin({ id: "u-ops-city", role: "operations", full_name: "Rajkot Ops", email: "rajkot.ops@example.com", scope_type: "city", scope_value: "Rajkot" }),
+    admin({ id: "u-ops-state", role: "operations", full_name: "Gujarat Ops", email: "gujarat.ops@example.com", scope_type: "state", scope_value: GUJARAT }),
     ...ADVISORS.map((a): Profile => ({
       id: a.id, role: "advisor", full_name: a.name, email: `${a.name.toLowerCase().replace(/[^a-z]/g, ".")}@example.com`,
-      advisor_code: a.code, region: a.region, active: true, created_at: createdIso(90),
+      advisor_code: a.code, city: a.city, state: a.state, zip: a.zip, scope_type: null, scope_value: null,
+      active: true, created_at: createdIso(90),
     })),
   ];
 
@@ -127,7 +143,7 @@ export function buildSeed(): MockDb {
   let seq = 0;
 
   /** One building visit: walk up the floors leaving `count` letters, one per office, all dated `dateStr`. */
-  function visit(advisorId: string, city: string, dateStr: string, count: number, startMinute: number) {
+  function visit(advisorId: string, city: string, state: string, dateStr: string, count: number, startMinute: number) {
     const b = pick(BUILDINGS[city]);
     const block = pick(b.blocks);
     let floor = 1 + Math.floor(rand() * 8);
@@ -162,6 +178,8 @@ export function buildSeed(): MockDb {
         city: rand() < 0.8 ? city : null,
         full_address: rand() < 0.45 ? `${b.name}, ${b.address}` : null,
         drop_date: dateStr,
+        region_city: city,
+        region_state: state,
         responded,
         response_type: type,
         response_date: respDate,
@@ -174,7 +192,7 @@ export function buildSeed(): MockDb {
   }
 
   /** Spread `total` letters across `days` and leave them building by building. */
-  function generate(advisorId: string, city: string, days: string[], total: number) {
+  function generate(advisorId: string, city: string, state: string, days: string[], total: number) {
     if (!days.length || total <= 0) return;
     const perDay = days.map(() => 0);
     for (let i = 0; i < total; i++) perDay[Math.floor(rand() * days.length)]++;
@@ -183,7 +201,7 @@ export function buildSeed(): MockDb {
       let minute = 0;
       while (left > 0) {
         const n = Math.min(left, 8 + Math.floor(rand() * 30));
-        visit(advisorId, city, day, n, minute);
+        visit(advisorId, city, state, day, n, minute);
         minute += n * 3 + 20;
         left -= n;
       }
@@ -196,14 +214,14 @@ export function buildSeed(): MockDb {
   const upToToday = weekDays.filter((d) => d <= todayStr);
   const workingSoFar = upToToday.filter((d) => weekday(d) !== 0); // advisors work Mon-Sat
   const currentDays = workingSoFar.length ? workingSoFar : upToToday;
-  for (const a of ADVISORS) generate(a.id, a.city, currentDays, a.week);
+  for (const a of ADVISORS) generate(a.id, a.city, a.state, currentDays, a.week);
 
   // Back-history for the month-wise chart and all-time totals: a modest, tapering weekly pace.
   for (const a of ADVISORS) {
     for (let w = 1; w <= HISTORY_WEEKS; w++) {
       const ws = addDays(week.start, -7 * w); // the Monday of that past week
       const days = Array.from({ length: 6 }, (_, i) => addDays(ws, i)); // Mon..Sat of that past week
-      generate(a.id, a.city, days, Math.round(a.base * Math.max(0.2, 1 - 0.05 * (w - 1))));
+      generate(a.id, a.city, a.state, days, Math.round(a.base * Math.max(0.2, 1 - 0.05 * (w - 1))));
     }
   }
 
@@ -212,6 +230,7 @@ export function buildSeed(): MockDb {
   drops.push({
     id: `d-${++seq}`, advisor_id: "u-adv1", office_number: "301-302", company_name: "Vasant Group", building_name: "Shivalik Shilp",
     block_no: "A", area: "Ahmedabad", city: null, full_address: null, drop_date: exampleDay,
+    region_city: "Ahmedabad", region_state: GUJARAT,
     responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null,
     created_at: new Date(Math.min(parseYmd(exampleDay) + (9 * 60 + 30 - IST_OFFSET_MIN) * 60_000, now.getTime() - 60_000)).toISOString(),
   });

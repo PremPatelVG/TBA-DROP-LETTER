@@ -38,7 +38,7 @@ function LeaderboardList({ rows, meId }: { rows: LeaderboardRow[]; meId?: string
                 {r.advisor_code && <span className="ml-1 font-mono text-xs text-slate-500">{r.advisor_code}</span>}
                 {me && <span className="ml-2 rounded-full bg-green-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">You</span>}
               </p>
-              <p className="truncate text-xs text-slate-500">{r.region ?? "—"}</p>
+              <p className="truncate text-xs text-slate-500">{[r.city, r.state].filter(Boolean).join(", ") || "—"}</p>
             </div>
             <BeltChip belt={belt} />
             <div className="w-16 shrink-0 text-right">

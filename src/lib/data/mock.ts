@@ -4,8 +4,8 @@ import { buildSeed, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
-const DB_KEY = "tba.mock.db.v7";
-const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6"];
+const DB_KEY = "tba.mock.db.v8";
+const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7"];
 const SESSION_KEY = "tba.mock.session.email";
 
 let memory: MockDb | null = null;
@@ -67,15 +67,33 @@ function requireMaster() {
 
 const newestFirst = (a: Drop, b: Drop) => b.drop_date.localeCompare(a.drop_date) || b.created_at.localeCompare(a.created_at);
 
-/** Imitates the security rules: advisors only see their own rows. */
+/** Imitates the security rules: advisors only see their own rows (used for leads, which are not region-scoped). */
 const visible = <T extends { advisor_id: string }>(rows: T[], advisorId?: string) => {
   const p = me();
   const scope = isAdminRole(p.role) ? advisorId : p.id;
   return scope ? rows.filter((r) => r.advisor_id === scope) : rows;
 };
 
+/** A scoped operations account's region filter for anything carrying a city and state; master/other: no filter. */
+function inScope<T>(p: Profile, rows: T[], city: (r: T) => string | null, state: (r: T) => string | null): T[] {
+  if (p.role !== "operations") return rows; // master sees every region
+  if (p.scope_type === "city" && p.scope_value) return rows.filter((r) => city(r) === p.scope_value);
+  if (p.scope_type === "state" && p.scope_value) return rows.filter((r) => state(r) === p.scope_value);
+  return []; // an operations account with no scope sees nothing (fail closed)
+}
+/** Advisors in the signed-in admin's region: a scoped operations account sees its city/state only; master all. */
+const advisorsInScope = (p: Profile, advisors: Profile[]) => inScope(p, advisors, (a) => a.city, (a) => a.state);
+
+/** Imitates the security rules for drops: advisors own rows; operations their region (city or state); master all. */
+function visibleDrops(rows: Drop[], advisorId?: string): Drop[] {
+  const p = me();
+  if (p.role === "advisor") return rows.filter((r) => r.advisor_id === p.id);
+  const scoped = inScope(p, rows, (d) => d.region_city, (d) => d.region_state);
+  return advisorId ? scoped.filter((r) => r.advisor_id === advisorId) : scoped;
+}
+
 function filtered(f: DropFilter) {
-  return visible(load().drops, f.advisorId).filter((d) =>
+  return visibleDrops(load().drops, f.advisorId).filter((d) =>
     (!f.from || d.drop_date >= f.from) &&
     (!f.to || d.drop_date <= f.to) &&
     matchesPlace(d, f) &&
@@ -100,10 +118,14 @@ export const mockApi: DataApi = {
   },
   async signOut() { setSession(null); },
   async demoAccounts() {
+    const roleNote = (p: Profile) =>
+      p.role === "advisor" ? `Advisor ${p.advisor_code} · ${p.city ?? ""}`
+      : p.role === "master" ? "Master · all regions"
+      : `Ops · ${p.scope_type === "state" ? "State" : "City"}: ${p.scope_value ?? "—"}`;
     const people = load().profiles.map((p) => ({
       email: p.email,
       name: p.full_name,
-      note: `${p.role === "advisor" ? `Advisor ${p.advisor_code}` : p.role === "master" ? "Master" : "Operations"}${p.active ? "" : " (deactivated)"}`,
+      note: `${roleNote(p)}${p.active ? "" : " (deactivated)"}`,
     }));
     return wait([...people, DEMO_UNLISTED]);
   },
@@ -112,17 +134,31 @@ export const mockApi: DataApi = {
   },
 
   async listAdvisors() {
-    requireOps();
-    return wait(load().profiles.filter((p) => p.role === "advisor").sort((a, b) => (a.advisor_code ?? "").localeCompare(b.advisor_code ?? "")));
+    const actor = requireOps();
+    const advisors = load().profiles.filter((p) => p.role === "advisor");
+    return wait(advisorsInScope(actor, advisors).sort((a, b) => (a.advisor_code ?? "").localeCompare(b.advisor_code ?? "")));
   },
   async createAdvisor(input) {
-    requireOps();
+    const actor = requireOps();
     const db = load();
     const code = input.advisor_code.trim().toUpperCase();
     const email = cleanEmail(input.email);
     if (db.profiles.some((p) => p.advisor_code === code)) throw new Error(`Advisor ID ${code} already exists.`);
     if (db.profiles.some((p) => p.email === email)) throw new Error(`${email} is already on the list.`);
-    const p: Profile = { id: uid("u"), role: "advisor", full_name: input.full_name.trim(), email, advisor_code: code, region: input.region.trim(), active: true, created_at: new Date().toISOString() };
+    let city = input.city.trim();
+    let state = input.state.trim();
+    const zip = input.zip?.trim() || null;
+    // Operations accounts can only add advisors inside their own region: force the scoped dimension.
+    if (actor.role === "operations") {
+      if (actor.scope_type === "city" && actor.scope_value) city = actor.scope_value;
+      else if (actor.scope_type === "state" && actor.scope_value) state = actor.scope_value;
+    }
+    if (!city) throw new Error("City is required.");
+    if (!state) throw new Error("State is required.");
+    const p: Profile = {
+      id: uid("u"), role: "advisor", full_name: input.full_name.trim(), email, advisor_code: code,
+      city, state, zip, scope_type: null, scope_value: null, active: true, created_at: new Date().toISOString(),
+    };
     db.profiles.push(p);
     save();
     return wait(p);
@@ -136,7 +172,12 @@ export const mockApi: DataApi = {
     const db = load();
     const email = cleanEmail(input.email);
     if (db.profiles.some((p) => p.email === email)) throw new Error(`${email} is already on the list.`);
-    const p: Profile = { id: uid("u"), role: "operations", full_name: input.full_name.trim(), email, advisor_code: null, region: null, active: true, created_at: new Date().toISOString() };
+    const scope_value = input.scope_value.trim();
+    if (!scope_value) throw new Error(`${input.scope_type === "state" ? "State" : "City"} is required.`);
+    const p: Profile = {
+      id: uid("u"), role: "operations", full_name: input.full_name.trim(), email, advisor_code: null,
+      city: null, state: null, zip: null, scope_type: input.scope_type, scope_value, active: true, created_at: new Date().toISOString(),
+    };
     db.profiles.push(p);
     save();
     return wait(p);
@@ -162,17 +203,20 @@ export const mockApi: DataApi = {
     const rows = filtered(f);
     return wait({ letters: rows.length, responses: rows.filter((d) => d.responded).length });
   },
-  async getDrop(id) { return wait(visible(load().drops).find((d) => d.id === id) ?? null); },
+  async getDrop(id) { return wait(visibleDrops(load().drops).find((d) => d.id === id) ?? null); },
   async createDrop(input) {
     const p = me();
     if (p.role !== "advisor") throw new Error("Only advisors log drops");
-    const d: Drop = { ...input, id: uid("d"), advisor_id: p.id, created_at: new Date().toISOString(), responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null };
+    const d: Drop = {
+      ...input, id: uid("d"), advisor_id: p.id, region_city: p.city, region_state: p.state, created_at: new Date().toISOString(),
+      responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null,
+    };
     load().drops.push(d);
     save();
     return wait(d);
   },
   async updateDropResponse(id, r) {
-    const d = visible(load().drops).find((x) => x.id === id);
+    const d = visibleDrops(load().drops).find((x) => x.id === id);
     if (!d) throw new Error("Drop not found.");
     // Same rule as the security rules: a responded letter needs the responder's phone number or email.
     if (r.responded && !r.response_phone?.trim() && !r.response_email?.trim()) {
@@ -184,7 +228,7 @@ export const mockApi: DataApi = {
   },
   async listBuildings() {
     const seen = new Map<string, { name: string; city: string | null }>();
-    for (const d of visible(load().drops)) {
+    for (const d of visibleDrops(load().drops)) {
       const k = buildingKey(d.building_name);
       if (!seen.has(k) || (!seen.get(k)!.city && d.city)) seen.set(k, { name: d.building_name, city: d.city });
     }
@@ -192,13 +236,14 @@ export const mockApi: DataApi = {
   },
 
   async advisorSummary(advisorId, week) {
-    const rows = visible(load().drops, advisorId);
+    const rows = visibleDrops(load().drops, advisorId);
     const t = totals(rows);
     return wait({ letters: t.letters, responses: t.responses, buildings: t.buildings, weekLetters: rows.filter((d) => d.drop_date >= week.start && d.drop_date <= week.end).length });
   },
   async opsSummary(week, advisorIds) {
-    requireOps();
-    const all = load().drops;
+    const actor = requireOps();
+    // Totals cover the signed-in account's region: one city, one whole state, or (master) every region.
+    const all = inScope(actor, load().drops, (d) => d.region_city, (d) => d.region_state);
     const t = totals(all);
     const months = lastMonths(6).map((m) => {
       const rows = all.filter((d) => d.drop_date >= m.start && d.drop_date <= m.end);
@@ -212,20 +257,21 @@ export const mockApi: DataApi = {
     return wait({ letters: t.letters, responses: t.responses, buildings: t.buildings, months, perAdvisor });
   },
   async beltLeaderboard(week) {
-    me(); // any signed-in user may read the leaderboard (advisors included)
+    const viewer = me(); // any signed-in user may read the leaderboard (advisors included)
     const db = load();
+    // A scoped operations account ranks only its region's advisors; master and advisors see the whole company.
+    const advisors = viewer.role === "operations" ? advisorsInScope(viewer, db.profiles.filter((p) => p.role === "advisor")) : db.profiles.filter((p) => p.role === "advisor");
     // "entries this week": each advisor's drops whose drop_date falls in the current competition week.
     // Easy to switch to all-time totals later: drop the drop_date range and count all of the advisor's drops.
     return wait(
-      db.profiles
-        .filter((p) => p.role === "advisor")
-        .map((a) => ({
-          advisorId: a.id,
-          full_name: a.full_name,
-          advisor_code: a.advisor_code,
-          region: a.region,
-          weekEntries: db.drops.filter((d) => d.advisor_id === a.id && d.drop_date >= week.start && d.drop_date <= week.end).length,
-        })),
+      advisors.map((a) => ({
+        advisorId: a.id,
+        full_name: a.full_name,
+        advisor_code: a.advisor_code,
+        city: a.city,
+        state: a.state,
+        weekEntries: db.drops.filter((d) => d.advisor_id === a.id && d.drop_date >= week.start && d.drop_date <= week.end).length,
+      })),
     );
   },
 

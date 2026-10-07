@@ -30,6 +30,16 @@ service cloud.firestore {
     function isAdvisor() { return listed() && request.auth.token.role == 'advisor'; }
     function isAdmin() { return listed() && request.auth.token.role in ['operations', 'master']; }
     function isMaster() { return listed() && request.auth.token.role == 'master'; }
+    // An operations account is scoped to one franchise region: a single city or a whole state. Master is not.
+    function isOpsOnly() { return listed() && request.auth.token.role == 'operations'; }
+    function scopeType() { return request.auth.token.get('scope_type', null); }
+    function scopeValue() { return request.auth.token.get('scope_value', null); }
+    // Whether a document's denormalized city/state falls in the operations account's region (city- or state-level).
+    function inScope(docCity, docState) {
+      return scopeValue() is string
+        && ((scopeType() == 'city' && docCity == scopeValue())
+            || (scopeType() == 'state' && docState == scopeValue()));
+    }
 
     // ---------- field checks ----------
 
@@ -43,13 +53,22 @@ service cloud.firestore {
     function ownerAndCreatedUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['advisor_id', 'created_at']);
     }
+    // Drops/buildings also pin the denormalized region once set: a response cannot move a letter to another region.
+    function regionUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['advisor_id', 'created_at', 'region_city', 'region_state']);
+    }
 
     // ---------- access list ----------
 
     match /users/{userId} {
-      // Your own entry; operations read advisors; master reads everyone.
-      allow get: if listed() && (userId == me() || (isAdmin() && (resource.data.role == 'advisor' || isMaster())));
-      allow list: if isAdmin() && (resource.data.role == 'advisor' || isMaster());
+      // Your own entry; master reads everyone; a scoped operations account reads only advisors in its region.
+      allow get: if listed() && (
+        userId == me()
+        || isMaster()
+        || (isOpsOnly() && resource.data.role == 'advisor' && inScope(resource.data.get('city', null), resource.data.get('state', null)))
+      );
+      allow list: if isMaster()
+        || (isOpsOnly() && resource.data.role == 'advisor' && inScope(resource.data.get('city', null), resource.data.get('state', null)));
       allow write: if false;
     }
 
@@ -57,13 +76,15 @@ service cloud.firestore {
 
     function dropKeys() {
       return ['advisor_id', 'office_number', 'company_name', 'building_name', 'block_no', 'area', 'city', 'full_address',
-              'drop_date', 'responded', 'response_type', 'response_date', 'response_notes', 'response_phone',
-              'response_email', 'created_at', 'search_tokens'];
+              'region_city', 'region_state', 'drop_date', 'responded', 'response_type', 'response_date', 'response_notes',
+              'response_phone', 'response_email', 'created_at', 'search_tokens'];
     }
     function validDrop(d) {
       return d.keys().hasAll(dropKeys()) && d.keys().hasOnly(dropKeys())
         && text(d.office_number, 50) && text(d.company_name, 200) && text(d.building_name, 200) && text(d.block_no, 20)
         && optText(d.area, 200) && optText(d.city, 100) && optText(d.full_address, 500)
+        // The creating advisor's own city and state, denormalized for franchise scoping (see create rule below).
+        && text(d.region_city, 100) && text(d.region_state, 100)
         && isDate(d.drop_date)
         && d.created_at is timestamp
         && d.search_tokens is list && d.search_tokens.size() <= 1000
@@ -83,26 +104,40 @@ service cloud.firestore {
     }
 
     match /drops/{dropId} {
-      // Advisors only their own (their queries must filter on advisor_id); operations and master everything.
-      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
-      allow create: if isAdvisor() && request.resource.data.advisor_id == me() && validDrop(request.resource.data);
-      allow update: if isAdvisor() && resource.data.advisor_id == me() && ownerAndCreatedUnchanged()
+      // Advisors only their own (their queries must filter on advisor_id). Master reads every region; a scoped
+      // operations account reads only drops whose denormalized region matches its city or state.
+      allow read: if isMaster()
+        || (isOpsOnly() && inScope(resource.data.get('region_city', null), resource.data.get('region_state', null)))
+        || (isAdvisor() && resource.data.advisor_id == me());
+      // A new drop carries the creating advisor's own city and state (from their claim), so it is filed in
+      // their region and no advisor can file a letter into someone else's.
+      allow create: if isAdvisor() && request.resource.data.advisor_id == me()
+        && request.resource.data.region_city == request.auth.token.get('city', null)
+        && request.resource.data.region_state == request.auth.token.get('state', null)
+        && validDrop(request.resource.data);
+      allow update: if isAdvisor() && resource.data.advisor_id == me() && regionUnchanged()
         && validDrop(request.resource.data);
       allow delete: if false;
     }
 
     // One document per advisor and building ("<pid>__<building key>"), for the building filter and counts.
+    // It carries the same denormalized region as the advisor's drops, so a scoped operations account's building
+    // list and "buildings covered" count are limited to its region.
     match /buildings/{buildingId} {
-      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
+      allow read: if isMaster()
+        || (isOpsOnly() && inScope(resource.data.get('region_city', null), resource.data.get('region_state', null)))
+        || (isAdvisor() && resource.data.advisor_id == me());
       allow create, update: if isAdvisor()
         && request.resource.data.advisor_id == me()
         && buildingId == me() + '__' + request.resource.data.key
-        && request.resource.data.keys().hasAll(['advisor_id', 'key', 'name'])
-        && request.resource.data.keys().hasOnly(['advisor_id', 'key', 'name', 'city', 'city_key'])
+        && request.resource.data.keys().hasAll(['advisor_id', 'key', 'name', 'region_city', 'region_state'])
+        && request.resource.data.keys().hasOnly(['advisor_id', 'key', 'name', 'city', 'city_key', 'region_city', 'region_state'])
         && request.resource.data.key is string && request.resource.data.key.size() <= 100
         && text(request.resource.data.name, 200)
         && optText(request.resource.data.get('city', null), 100)
-        && optText(request.resource.data.get('city_key', null), 100);
+        && optText(request.resource.data.get('city_key', null), 100)
+        && request.resource.data.region_city == request.auth.token.get('city', null)
+        && request.resource.data.region_state == request.auth.token.get('state', null);
       allow delete: if false;
     }
 

@@ -44,7 +44,7 @@ before(async () => {
   db = getFirestore(app);
   await clear();
   const advisor = (code: string, extra: object = {}) => ({
-    role: "advisor", full_name: code, email: `${code.toLowerCase()}@example.com`, advisor_code: code, region: "Test",
+    role: "advisor", full_name: code, email: `${code.toLowerCase()}@example.com`, advisor_code: code, city: "Test", state: "Gujarat",
     active: true, uid: null, created_at: Timestamp.fromDate(new Date("2026-08-01T12:00:00+05:30")), ...extra,
   });
   await Promise.all([

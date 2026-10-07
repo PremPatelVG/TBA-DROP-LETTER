@@ -18,7 +18,7 @@ export default function OpsDashboard() {
   if (!s) return <Notice kind="info">The dashboard needs an internet connection.</Notice>;
   // Belt leaderboard rows from this week's per-advisor entry counts (one drop entry is one letter).
   const leaderboard = advisors.map((a) => ({
-    advisorId: a.id, full_name: a.full_name, advisor_code: a.advisor_code, region: a.region,
+    advisorId: a.id, full_name: a.full_name, advisor_code: a.advisor_code, city: a.city, state: a.state,
     weekEntries: s.perAdvisor[a.id]?.weekLetters ?? 0,
   }));
 

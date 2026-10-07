@@ -91,7 +91,9 @@ function toProfile(snap: DocumentSnapshot): Profile {
   const d = snap.data() ?? {};
   return {
     id: snap.id, role: d.role, full_name: d.full_name ?? "", email: d.email ?? "", advisor_code: d.advisor_code ?? null,
-    region: d.region ?? null, active: d.active === true, created_at: iso(d.created_at),
+    city: d.city ?? null, state: d.state ?? null, zip: d.zip ?? null,
+    scope_type: d.scope_type ?? null, scope_value: d.scope_value ?? null,
+    active: d.active === true, created_at: iso(d.created_at),
   };
 }
 
@@ -247,10 +249,23 @@ function toDrop(snap: DocumentSnapshot): Drop {
   return {
     id: snap.id, advisor_id: d.advisor_id, office_number: d.office_number, company_name: d.company_name, building_name: d.building_name,
     block_no: d.block_no, area: d.area ?? null, city: d.city ?? null, full_address: d.full_address ?? null, drop_date: d.drop_date,
+    region_city: d.region_city ?? null, region_state: d.region_state ?? null,
     responded: d.responded === true, response_type: d.response_type ?? "none", response_date: d.response_date ?? null,
     response_notes: d.response_notes ?? null, response_phone: d.response_phone ?? null, response_email: d.response_email ?? null,
     created_at: iso(d.created_at),
   };
+}
+
+/**
+ * The region filter the signed-in operations account applies to drops and buildings (by region_city/region_state)
+ * or to advisor profiles (by city/state). Master and advisors get none here (handled by role elsewhere).
+ */
+function scopeWhere(cityField: string, stateField: string): QueryConstraint[] {
+  const p = profile();
+  if (p.role !== "operations") return [];
+  if (p.scope_type === "city" && p.scope_value) return [where(cityField, "==", p.scope_value)];
+  if (p.scope_type === "state" && p.scope_value) return [where(stateField, "==", p.scope_value)];
+  return []; // an operations account with no scope: the security rules refuse the read (fail closed)
 }
 
 /**
@@ -265,8 +280,10 @@ function planDrops(f: DropFilter, extra: QueryConstraint[] = []) {
   const place = f.building ? `b:${buildingKey(f.building)}` : f.city && cityKey(f.city) ? `c:${cityKey(f.city)}` : null;
   const token = word ?? place;
   const exact = !word || (terms.length === 1 && terms[0].length <= MAX_TOKEN_LENGTH && !place);
-  // Field order matches firestore.indexes.json: advisor_id, responded, search_tokens, drop_date, created_at.
+  // Field order matches firestore.indexes.json: region_city/region_state, advisor_id, responded, search_tokens,
+  // drop_date, created_at. Operations accounts are scoped to their city or state; master sees every region.
   const cs: QueryConstraint[] = [];
+  cs.push(...scopeWhere("region_city", "region_state"));
   if (advisorId) cs.push(where("advisor_id", "==", advisorId));
   cs.push(...extra);
   if (token) cs.push(where("search_tokens", "array-contains", token));
@@ -359,7 +376,8 @@ export const firebaseApi: DataApi = {
   // ----- people (access list) -----
 
   async listAdvisors() {
-    const snap = await getDocs(query(collection(clientDb(), "users"), where("role", "==", "advisor")));
+    // Operations accounts see only advisors in their city or state; master sees all (scopeWhere adds nothing).
+    const snap = await getDocs(query(collection(clientDb(), "users"), where("role", "==", "advisor"), ...scopeWhere("city", "state")));
     return snap.docs.map(toProfile).sort((a, b) => (a.advisor_code ?? "").localeCompare(b.advisor_code ?? ""));
   },
   async createAdvisor(input) {
@@ -435,12 +453,14 @@ export const firebaseApi: DataApi = {
     const created = Timestamp.now();
     const fields = {
       ...input, advisor_id: p.id,
+      // The advisor's own city and state, denormalized so city- and state-scoped operations accounts can query.
+      region_city: p.city, region_state: p.state,
       responded: false, response_type: "none" as const, response_date: null, response_notes: null, response_phone: null, response_email: null,
     };
     // One small document per advisor and building, for the building filter and "buildings covered".
     const key = buildingKey(input.building_name);
     const building = setDoc(doc(db, "buildings", `${p.id}__${key}`), {
-      advisor_id: p.id, key, name: input.building_name,
+      advisor_id: p.id, key, name: input.building_name, region_city: p.city, region_state: p.state,
       ...(input.city ? { city: input.city, city_key: cityKey(input.city) } : {}),
     }, { merge: true });
     building.catch(() => {}); // if access is the problem, the drop write below reports it
@@ -457,7 +477,8 @@ export const firebaseApi: DataApi = {
   async listBuildings() {
     const p = profile();
     const c = collection(clientDb(), "buildings");
-    const snap = await getDocs(p.role === "advisor" ? query(c, where("advisor_id", "==", p.id)) : c);
+    // Advisors: their own buildings. Operations: buildings in their region. Master: all.
+    const snap = await getDocs(p.role === "advisor" ? query(c, where("advisor_id", "==", p.id)) : query(c, ...scopeWhere("region_city", "region_state")));
     return uniqueBuildings(snap.docs.map((d) => d.data()));
   },
 
@@ -477,17 +498,19 @@ export const firebaseApi: DataApi = {
   async opsSummary(week, advisorIds) {
     const db = clientDb();
     const drops = collection(db, "drops");
+    // Operations accounts: totals cover only their region; master: every region (scope adds no constraints).
+    const scope = scopeWhere("region_city", "region_state");
     try {
       const months = lastMonths(6);
       const [letters, responses, buildings, monthRows, perAdvisor] = await Promise.all([
-        count(query(drops, ...ORDER)),
-        count(query(drops, where("responded", "==", true), ...ORDER)),
-        getDocs(collection(db, "buildings")).then((s) => uniqueBuildings(s.docs.map((d) => d.data())).length),
+        count(query(drops, ...scope, ...ORDER)),
+        count(query(drops, ...scope, where("responded", "==", true), ...ORDER)),
+        getDocs(query(collection(db, "buildings"), ...scope)).then((s) => uniqueBuildings(s.docs.map((d) => d.data())).length),
         Promise.all(months.map(async (m) => {
           const range = [where("drop_date", ">=", m.start), where("drop_date", "<=", m.end)];
           const [l, r] = await Promise.all([
-            count(query(drops, ...range, ...ORDER)),
-            count(query(drops, where("responded", "==", true), ...range, ...ORDER)),
+            count(query(drops, ...scope, ...range, ...ORDER)),
+            count(query(drops, ...scope, where("responded", "==", true), ...range, ...ORDER)),
           ]);
           return { key: m.key, label: m.label, letters: l, responses: r };
         })),
@@ -506,12 +529,15 @@ export const firebaseApi: DataApi = {
     // is refused for an advisor the dashboard catches it and shows just their own belt.
     const db = clientDb();
     const drops = collection(db, "drops");
-    const advisors = await getDocs(query(collection(db, "users"), where("role", "==", "advisor")));
+    // Operations accounts rank only their region's advisors; master ranks all. Advisors cannot list users
+    // (the rules refuse it): the advisor dashboard catches that and shows just their own belt.
+    const scope = scopeWhere("region_city", "region_state");
+    const advisors = await getDocs(query(collection(db, "users"), where("role", "==", "advisor"), ...scopeWhere("city", "state")));
     return Promise.all(
       advisors.docs.map(async (snap): Promise<LeaderboardRow> => {
         const p = toProfile(snap);
-        const weekEntries = await count(query(drops, where("advisor_id", "==", p.id), where("drop_date", ">=", week.start), where("drop_date", "<=", week.end), ...ORDER));
-        return { advisorId: p.id, full_name: p.full_name, advisor_code: p.advisor_code, region: p.region, weekEntries };
+        const weekEntries = await count(query(drops, ...scope, where("advisor_id", "==", p.id), where("drop_date", ">=", week.start), where("drop_date", "<=", week.end), ...ORDER));
+        return { advisorId: p.id, full_name: p.full_name, advisor_code: p.advisor_code, city: p.city, state: p.state, weekEntries };
       }),
     );
   },
@@ -544,11 +570,14 @@ async function summaryFor(id: string, week: { start: string; end: string }): Pro
   const db = clientDb();
   const drops = collection(db, "drops");
   const mine = where("advisor_id", "==", id);
+  // An operations account reading another advisor's totals is region-scoped by the rules; an advisor reading
+  // their own, and master, add nothing here. (The advisor is already within the scope that found them.)
+  const scope = scopeWhere("region_city", "region_state");
   const [letters, responses, weekLetters, buildings] = await Promise.all([
-    count(query(drops, mine, ...ORDER)),
-    count(query(drops, mine, where("responded", "==", true), ...ORDER)),
-    count(query(drops, mine, where("drop_date", ">=", week.start), where("drop_date", "<=", week.end), ...ORDER)),
-    count(query(collection(db, "buildings"), where("advisor_id", "==", id))),
+    count(query(drops, mine, ...scope, ...ORDER)),
+    count(query(drops, mine, ...scope, where("responded", "==", true), ...ORDER)),
+    count(query(drops, mine, ...scope, where("drop_date", ">=", week.start), where("drop_date", "<=", week.end), ...ORDER)),
+    count(query(collection(db, "buildings"), where("advisor_id", "==", id), ...scope)),
   ]);
   return { letters, responses, buildings, weekLetters };
 }

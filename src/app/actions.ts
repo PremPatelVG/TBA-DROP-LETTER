@@ -10,7 +10,7 @@ import { FieldValue, Timestamp, type DocumentSnapshot } from "firebase-admin/fir
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { isEmail } from "@/lib/validate";
-import type { NewAdvisor, NewOpsUser, Profile, Role } from "@/lib/data/types";
+import type { NewAdvisor, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export type ClaimResult =
@@ -19,6 +19,7 @@ export type ClaimResult =
   | { status: "error"; message: string };
 
 const ROLES: Role[] = ["advisor", "operations", "master"];
+const SCOPE_TYPES: OpsScopeType[] = ["city", "state"];
 
 /** A message meant for the person using the app (anything else is logged and replaced by a generic one). */
 class Refusal extends Error {}
@@ -33,10 +34,38 @@ function toProfile(snap: DocumentSnapshot): Profile {
     full_name: d.full_name ?? "",
     email: d.email ?? "",
     advisor_code: d.advisor_code ?? null,
-    region: d.region ?? null,
+    city: d.city ?? null,
+    state: d.state ?? null,
+    zip: d.zip ?? null,
+    scope_type: d.scope_type ?? null,
+    scope_value: d.scope_value ?? null,
     active: d.active === true,
     created_at: iso(d.created_at),
   };
+}
+
+/**
+ * The custom claims the security rules read for this access entry. Advisors carry their own city and state
+ * (so a drop they create can be checked against their region); operations carry their assigned scope
+ * (type + value); master carries neither (the rules let master do everything).
+ */
+function claimsFor(u: Record<string, unknown>, pid: string) {
+  const claims: Record<string, string> = { role: String(u.role), pid };
+  if (u.role === "advisor") {
+    if (typeof u.city === "string") claims.city = u.city;
+    if (typeof u.state === "string") claims.state = u.state;
+  } else if (u.role === "operations") {
+    if (typeof u.scope_type === "string") claims.scope_type = u.scope_type;
+    if (typeof u.scope_value === "string") claims.scope_value = u.scope_value;
+  }
+  return claims;
+}
+/** True when the token's region/scope claims no longer match the access entry (so they must be re-set). */
+function claimsStale(token: DecodedIdToken, want: Record<string, string>) {
+  for (const k of ["role", "pid", "city", "state", "scope_type", "scope_value"]) {
+    if ((token[k] ?? null) !== (want[k] ?? null)) return true;
+  }
+  return false;
 }
 
 const code = (e: unknown) => (typeof e === "object" && e && "code" in e ? String((e as { code: unknown }).code) : "");
@@ -64,7 +93,11 @@ async function caller(idToken: string, roles: Role[]) {
   const snap = await adminDb().collection("users").doc(pid).get();
   const u = snap.data();
   if (!u || u.active !== true || u.uid !== token.uid || u.role !== token.role) throw new Refusal("You are not allowed to do this.");
-  return { uid: token.uid, pid, role: token.role as Role };
+  return {
+    uid: token.uid, pid, role: token.role as Role,
+    scope_type: (u.scope_type ?? null) as OpsScopeType | null,
+    scope_value: (u.scope_value ?? null) as string | null,
+  };
 }
 
 /**
@@ -108,8 +141,9 @@ export async function claimAccess(idToken: string): Promise<ClaimResult> {
     // The same Google account came back as a new Firebase account (the old one was deleted): move access over.
     await auth.setCustomUserClaims(u.uid, null).catch(() => {});
   }
-  const claimsChanged = token.role !== u.role || token.pid !== entry.id;
-  if (claimsChanged) await auth.setCustomUserClaims(token.uid, { role: u.role, pid: entry.id });
+  const claims = claimsFor(u, entry.id);
+  const claimsChanged = claimsStale(token, claims);
+  if (claimsChanged) await auth.setCustomUserClaims(token.uid, claims);
   if (u.uid !== token.uid || claimsChanged) {
     await entry.ref.update({ uid: token.uid, last_sign_in_at: FieldValue.serverTimestamp() });
   }
@@ -132,6 +166,13 @@ function googleEmail(v: unknown) {
   if (!isEmail(e)) throw new Refusal("Enter the person's Google account email, for example name@gmail.com.");
   return e;
 }
+/** Optional free text: null when blank, otherwise trimmed and length-checked. */
+function optInput(v: unknown, label: string, max: number) {
+  const s = String(v ?? "").trim().replace(/\s+/g, " ");
+  if (!s) return null;
+  if (s.length > max) throw new Refusal(`${label} is too long (at most ${max} characters).`);
+  return s;
+}
 
 /** Operations or master: add an advisor to the access list. They sign in with Google using `email`. */
 export async function createAdvisor(idToken: string, input: NewAdvisor): Promise<ActionResult<Profile>> {
@@ -140,8 +181,16 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
     const full_name = text(input.full_name, "Name", 100);
     const advisor_code = text(input.advisor_code, "Advisor ID", 32).toUpperCase();
     if (!/^[A-Z0-9_-]{3,32}$/.test(advisor_code)) throw new Refusal("Advisor ID: 3-32 letters, digits, - or _.");
-    const region = text(input.region, "Region", 100);
+    let city = text(input.city, "City", 100);
+    let state = text(input.state, "State", 100);
+    const zip = optInput(input.zip, "Zip code", 16);
     const email = googleEmail(input.email);
+    // Operations accounts can only add advisors inside their own region: force the scoped dimension so the
+    // new advisor is always within what the account can see (the other dimension is entered by the account).
+    if (me.role === "operations") {
+      if (me.scope_type === "city") city = text(me.scope_value, "City", 100);
+      else if (me.scope_type === "state") state = text(me.scope_value, "State", 100);
+    }
 
     const db = adminDb();
     const ref = db.collection("users").doc();
@@ -153,7 +202,7 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
       if (!byEmail.empty) throw new Refusal(`${email} is already on the list.`);
       if (!byCode.empty) throw new Refusal(`Advisor ID ${advisor_code} already exists.`);
       tx.create(ref, {
-        role: "advisor", full_name, email, advisor_code, region, active: true, uid: null,
+        role: "advisor", full_name, email, advisor_code, city, state, zip, active: true, uid: null,
         created_at: FieldValue.serverTimestamp(), created_by: me.pid,
       });
     });
@@ -161,19 +210,22 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
   });
 }
 
-/** Master only: add an operations person to the access list. */
+/** Master only: add an operations person to the access list, scoped to one city or one whole state. */
 export async function createOpsUser(idToken: string, input: NewOpsUser): Promise<ActionResult<Profile>> {
   return run("add the operations account", async () => {
     const me = await caller(idToken, ["master"]);
     const full_name = text(input.full_name, "Name", 100);
     const email = googleEmail(input.email);
+    const scope_type = input.scope_type;
+    if (!SCOPE_TYPES.includes(scope_type)) throw new Refusal("Choose whether this account covers a city or a state.");
+    const scope_value = text(input.scope_value, scope_type === "city" ? "City" : "State", 100);
     const db = adminDb();
     const ref = db.collection("users").doc();
     await db.runTransaction(async (tx) => {
       const byEmail = await tx.get(db.collection("users").where("email", "==", email).limit(1));
       if (!byEmail.empty) throw new Refusal(`${email} is already on the list.`);
       tx.create(ref, {
-        role: "operations", full_name, email, advisor_code: null, region: null, active: true, uid: null,
+        role: "operations", full_name, email, advisor_code: null, scope_type, scope_value, active: true, uid: null,
         created_at: FieldValue.serverTimestamp(), created_by: me.pid,
       });
     });

@@ -3,7 +3,8 @@
 //   npm run emulators        # terminal 1
 //   npm run emulators:seed   # terminal 2 (clears the emulators first)
 // Everyone signs in through the Auth emulator's "Sign in with Google" page with one of these emails:
-//   master@example.com, ops@example.com, riya.shah@example.com, karan.mehta@example.com, neha.desai@example.com
+//   master@example.com (all regions), ops@example.com (operations, whole state of Gujarat),
+//   riya.shah@example.com, karan.mehta@example.com, neha.desai@example.com (advisors in Gujarat)
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { buildingKey, cityKey, dropIndexTokens } from "../src/lib/search.ts";
@@ -27,22 +28,23 @@ const daysAgo = (n) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate
 const created = Timestamp.fromDate(daysAgo(60));
 
 const person = (role, full_name, email, extra = {}) => ({
-  role, full_name, email, advisor_code: null, region: null, active: true, uid: null, created_at: created, ...extra,
+  role, full_name, email, advisor_code: null, city: null, state: null, zip: null,
+  scope_type: null, scope_value: null, active: true, uid: null, created_at: created, ...extra,
 });
 const PEOPLE = {
   "u-master": person("master", "Master Admin", "master@example.com"),
-  "u-ops": person("operations", "Ops Admin", "ops@example.com"),
-  "u-adv1": person("advisor", "Riya Shah", "riya.shah@example.com", { advisor_code: "ADV001", region: "Ahmedabad West" }),
-  "u-adv2": person("advisor", "Karan Mehta", "karan.mehta@example.com", { advisor_code: "ADV002", region: "Surat" }),
-  "u-adv3": person("advisor", "Neha Desai", "neha.desai@example.com", { advisor_code: "ADV003", region: "Vadodara" }),
+  // One operations account scoped to the whole state of Gujarat (so it sees every seeded advisor below).
+  "u-ops": person("operations", "Ops Admin", "ops@example.com", { scope_type: "state", scope_value: "Gujarat" }),
+  "u-adv1": person("advisor", "Riya Shah", "riya.shah@example.com", { advisor_code: "ADV001", city: "Ahmedabad", state: "Gujarat", zip: "380015" }),
+  "u-adv2": person("advisor", "Karan Mehta", "karan.mehta@example.com", { advisor_code: "ADV002", city: "Rajkot", state: "Gujarat", zip: "360001" }),
+  "u-adv3": person("advisor", "Neha Desai", "neha.desai@example.com", { advisor_code: "ADV003", city: "Ahmedabad", state: "Gujarat", zip: "380054" }),
 };
 const BUILDINGS = {
   Ahmedabad: [["Shivalik Shilp", "Satellite"], ["Titanium City Centre", "Prahlad Nagar"], ["Westgate", "SG Highway"]],
-  Surat: [["International Trade Centre", "Majura Gate"], ["Belgium Square", "Delhi Gate"]],
-  Vadodara: [["Alkapuri Arcade", "Alkapuri"], ["Siddharth Complex", "Race Course"]],
+  Rajkot: [["Crystal Mall", "Kalawad Road"], ["Imperial Heights", "150 Ft Ring Road"], ["Madhav Plaza", "Yagnik Road"]],
 };
 const COMPANIES = ["Shree Traders", "Apex Infotech", "Om Exports", "Galaxy Diamonds", "Radiant Associates", "Sai Textiles", "Nova Pharma", "Zenith Realty"];
-const PLAN = [["u-adv1", "Ahmedabad", 7], ["u-adv2", "Surat", 9], ["u-adv3", "Vadodara", 4]]; // letters per working day
+const PLAN = [["u-adv1", "Ahmedabad", 7], ["u-adv2", "Rajkot", 9], ["u-adv3", "Ahmedabad", 4]]; // letters per working day
 
 let seed = 7;
 const rand = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
@@ -54,17 +56,20 @@ for (const [id, p] of Object.entries(PEOPLE)) writer.set(db.doc(`users/${id}`), 
 let count = 0;
 const buildings = new Map();
 function addDrop(advisorId, d, minutes) {
+  const owner = PEOPLE[advisorId];
   const day = new Date(`${d.drop_date}T10:00:00`);
   day.setMinutes(minutes);
   const drop = {
     advisor_id: advisorId, area: null, city: null, full_address: null, responded: false, response_type: "none", response_date: null,
     response_notes: null, response_phone: null, response_email: null, ...d,
+    // The creating advisor's own city and state, denormalized for city- and state-scoped operations accounts.
+    region_city: owner.city, region_state: owner.state,
     created_at: Timestamp.fromDate(new Date(Math.min(day.getTime(), Date.now() - 60_000))),
   };
   drop.search_tokens = dropIndexTokens(drop);
   writer.set(db.collection("drops").doc(), drop);
   const key = buildingKey(drop.building_name);
-  const b = buildings.get(`${advisorId}__${key}`) ?? { advisor_id: advisorId, key, name: drop.building_name };
+  const b = buildings.get(`${advisorId}__${key}`) ?? { advisor_id: advisorId, key, name: drop.building_name, region_city: owner.city, region_state: owner.state };
   if (drop.city && !b.city) Object.assign(b, { city: drop.city, city_key: cityKey(drop.city) });
   buildings.set(`${advisorId}__${key}`, b);
   count++;

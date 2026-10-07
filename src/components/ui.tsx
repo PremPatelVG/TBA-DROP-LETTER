@@ -137,11 +137,20 @@ function SyncBanner() {
 }
 const DemoBadge = () => (USE_MOCK ? <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">DEMO DATA</span> : null);
 
+/** How the signed-in admin's franchise region reads in the header: the master sees everything; an operations
+ * account is pinned to one city or one whole state. */
+export function regionLabel(user: Pick<Profile, "role" | "scope_type" | "scope_value">): string | null {
+  if (user.role === "master") return "All regions";
+  if (user.role === "operations" && user.scope_value) return `${user.scope_type === "state" ? "State" : "City"}: ${user.scope_value}`;
+  return null;
+}
+
 /** Desktop web admin chrome for operations and master. */
 function AdminShell({ user, children }: { user: Profile; children: React.ReactNode }) {
   const path = usePathname();
   const signOut = useSignOut();
   const nav = user.role === "master" ? [...ADMIN_NAV, ...MASTER_NAV] : ADMIN_NAV;
+  const region = regionLabel(user);
   return (
     <div className="min-h-dvh bg-slate-50">
       <header className="sticky top-0 z-10 border-b bg-white">
@@ -150,7 +159,14 @@ function AdminShell({ user, children }: { user: Profile; children: React.ReactNo
             <p className="text-xs font-semibold uppercase tracking-wide text-green-700">TBA Drop Letter · Admin<DemoBadge /></p>
             <p className="truncate text-sm text-slate-600">{ROLE_LABEL[user.role]} · {user.full_name}</p>
           </div>
-          <button onClick={signOut} className={btn2Cls}>Sign out</button>
+          <div className="flex shrink-0 items-center gap-3">
+            {region && (
+              <span className="whitespace-nowrap rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-800" title="Region you manage">
+                {region}
+              </span>
+            )}
+            <button onClick={signOut} className={btn2Cls}>Sign out</button>
+          </div>
         </div>
         <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 pb-2 text-sm">
           {nav.map((n) => (

@@ -3,6 +3,12 @@ export type Role = "advisor" | "operations" | "master";
 export const isAdminRole = (r: Role) => r === "operations" || r === "master";
 export type ResponseType = "call" | "email" | "none";
 
+/**
+ * A franchise region an operations account is assigned to: either one city (e.g. "Rajkot") or a whole state
+ * (e.g. "Gujarat", which covers every city in it). The master picks one when creating the account.
+ */
+export type OpsScopeType = "city" | "state";
+
 /** A person on the access list. Everyone signs in with Google using `email`. */
 export type Profile = {
   id: string;
@@ -11,7 +17,18 @@ export type Profile = {
   /** Google account email, lower-case. Only listed emails can use the app. */
   email: string;
   advisor_code: string | null;
-  region: string | null;
+  /**
+   * Advisor address. `city` and `state` are also the franchise region keys: a city-scoped operations account
+   * sees advisors (and drops) whose `city` matches it, a state-scoped one sees everyone whose `state` matches.
+   */
+  city: string | null;
+  state: string | null;
+  /** Advisor postal code (optional). */
+  zip: string | null;
+  /** Operations accounts only: the kind of region assigned (a single city or a whole state); null otherwise. */
+  scope_type: OpsScopeType | null;
+  /** Operations accounts only: the assigned city or state name; null for master (unrestricted) and advisors. */
+  scope_value: string | null;
   active: boolean;
   created_at: string;
 };
@@ -38,7 +55,18 @@ export type DropResponse = {
   response_email: string | null;
 };
 
-export type Drop = DropInput & DropResponse & { id: string; advisor_id: string; created_at: string };
+export type Drop = DropInput & DropResponse & {
+  id: string;
+  advisor_id: string;
+  created_at: string;
+  /**
+   * The creating advisor's city and state, denormalized onto the drop so a city- or state-scoped operations
+   * account can query and rule-check its drops efficiently. Separate from the drop's own `city`/`full_address`
+   * (where the letter was left), which are unchanged.
+   */
+  region_city: string | null;
+  region_state: string | null;
+};
 
 /**
  * Filters for finding drops. Advisors only ever get their own drops.
@@ -74,7 +102,8 @@ export type LeaderboardRow = {
   advisorId: string;
   full_name: string;
   advisor_code: string | null;
-  region: string | null;
+  city: string | null;
+  state: string | null;
   /** Number of drop entries in the week (entries this week; one entry is one letter). */
   weekEntries: number;
 };
@@ -90,8 +119,8 @@ export type LeadInput = {
 };
 export type Lead = LeadInput & { id: string; advisor_id: string; created_at: string };
 
-export type NewOpsUser = { full_name: string; email: string };
-export type NewAdvisor = { full_name: string; advisor_code: string; region: string; email: string };
+export type NewOpsUser = { full_name: string; email: string; scope_type: OpsScopeType; scope_value: string };
+export type NewAdvisor = { full_name: string; advisor_code: string; email: string; city: string; state: string; zip: string | null };
 
 /** Outcome of signing in. Only people on the access list who are active get `ok`. */
 export type AccessResult =
