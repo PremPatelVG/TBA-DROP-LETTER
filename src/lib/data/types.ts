@@ -79,6 +79,16 @@ export type DropFilter = {
   q?: string;
   city?: string;
   building?: string;
+  /**
+   * Response-status filter: true = only letters the company responded to, false = only those not yet
+   * responded to (pending). Left out = both. (`responded` is a flag on each drop; see {@link DropResponse}.)
+   */
+  responded?: boolean;
+  /**
+   * Contact-method filter, matched against each drop's `response_type`: "call" or "email" (a responded
+   * letter), or "none" (a letter not yet responded to). Left out = any method. Combines with `responded`.
+   */
+  method?: ResponseType;
 };
 
 /** Opaque position for "show more"; pass back what the previous page returned. */

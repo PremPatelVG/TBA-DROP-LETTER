@@ -11,7 +11,7 @@ export type MockDb = {
 };
 
 /** Bump when the shape or volume of the sample data changes; old browser data is then replaced. */
-export const MOCK_VERSION = 9;
+export const MOCK_VERSION = 10;
 
 /** The password every demo account shares. DEMO ONLY — shown on the sign-in screen so the password flow can be tried. */
 export const DEMO_PASSWORD = "demo1234";
@@ -163,7 +163,9 @@ export function buildSeed(): MockDb {
       unit += joined ? 2 : 1;
 
       const company = `${pick(NAME_A)} ${pick(NAME_B)}`;
-      const responded = age >= 2 && rand() < 0.05;
+      // A healthy share of older letters get a response, split across call and email below, so the response
+      // filters (status and contact method) show a clear mix of responded-Yes and not-yet-responded drops.
+      const responded = age >= 2 && rand() < 0.25;
       const respDate = responded ? addDays(dateStr, 1 + Math.floor(rand() * Math.min(10, age - 1))) : null;
       const type = responded ? (rand() < 0.65 ? "call" : "email") : "none";
       // Callers leave a number (sometimes an email too); emails come with an address (sometimes a number).

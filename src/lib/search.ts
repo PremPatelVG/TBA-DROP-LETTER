@@ -90,3 +90,18 @@ export function matchesPlace(d: Pick<Drop, "building_name" | "city">, f: { build
   if (f.city) return cityKey(d.city) === cityKey(f.city);
   return true;
 }
+
+/**
+ * Response-status and contact-method filters, shared by the demo data and the Firebase data layer.
+ * `responded` matches the drop's `responded` flag (true = responded, false = not yet); `method` matches
+ * its `response_type` ("call"/"email" for a responded letter, "none" for one not yet responded to).
+ * Both are optional and combine; a responded/method pair that cannot co-exist simply matches nothing.
+ */
+export function matchesResponse(
+  d: Pick<Drop, "responded" | "response_type">,
+  f: { responded?: boolean; method?: Drop["response_type"] },
+) {
+  if (typeof f.responded === "boolean" && d.responded !== f.responded) return false;
+  if (f.method && d.response_type !== f.method) return false;
+  return true;
+}

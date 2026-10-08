@@ -1,4 +1,4 @@
-import { buildingKey, matchesDropSearch, matchesPlace } from "@/lib/search";
+import { buildingKey, matchesDropSearch, matchesPlace, matchesResponse } from "@/lib/search";
 import { lastMonths, totals } from "@/lib/stats";
 import { passwordError } from "@/lib/validate";
 import { buildSeed, DEMO_PASSWORD, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
@@ -6,8 +6,8 @@ import { accessFor, canResetPassword, passwordSignIn } from "./authz";
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
-const DB_KEY = "tba.mock.db.v9";
-const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7", "tba.mock.db.v8"];
+const DB_KEY = "tba.mock.db.v10";
+const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7", "tba.mock.db.v8", "tba.mock.db.v9"];
 const SESSION_KEY = "tba.mock.session.email";
 
 let memory: MockDb | null = null;
@@ -94,6 +94,7 @@ function filtered(f: DropFilter) {
     (!f.from || d.drop_date >= f.from) &&
     (!f.to || d.drop_date <= f.to) &&
     matchesPlace(d, f) &&
+    matchesResponse(d, f) &&
     matchesDropSearch(d, f.q));
 }
 

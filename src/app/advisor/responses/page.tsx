@@ -1,11 +1,12 @@
 "use client";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import type { DropFilter } from "@/lib/data";
 import { btn2Cls, DropCard, inputCls, Notice, ShowMore, useDropPages } from "@/components/ui";
 
 const PAGE = 50;
 // Kept while the app is open, so coming back from a drop shows the same search.
-let remembered = { q: "", date: "" };
+let remembered = { q: "", date: "", responded: "", method: "" };
 
 function Saved() {
   return useSearchParams().get("saved") ? <div className="mb-4"><Notice kind="ok">Response saved.</Notice></div> : null;
@@ -15,15 +16,21 @@ function Saved() {
 export default function LogResponse() {
   const [q, setQ] = useState(remembered.q);
   const [date, setDate] = useState(remembered.date);
+  const [responded, setResponded] = useState(remembered.responded);
+  const [method, setMethod] = useState(remembered.method);
   const [term, setTerm] = useState(remembered.q);
   useEffect(() => {
-    remembered = { q, date };
+    remembered = { q, date, responded, method };
     const t = setTimeout(() => setTerm(q), 250);
     return () => clearTimeout(t);
-  }, [q, date]);
+  }, [q, date, responded, method]);
 
-  const searching = Boolean(term.trim() || date);
-  const found = useDropPages({ q: term.trim() || undefined, from: date || undefined, to: date || undefined }, searching ? PAGE : 20);
+  const searching = Boolean(term.trim() || date || responded || method);
+  const found = useDropPages({
+    q: term.trim() || undefined, from: date || undefined, to: date || undefined,
+    responded: responded ? responded === "yes" : undefined,
+    method: (method || undefined) as DropFilter["method"],
+  }, searching ? PAGE : 20);
   const rows = found.rows;
 
   return (
@@ -36,11 +43,28 @@ export default function LogResponse() {
           <input id="response-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off"
             placeholder="Office no., company or building" className={inputCls} />
         </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-sm font-medium" htmlFor="response-status">Response
+            <select id="response-status" value={responded} onChange={(e) => setResponded(e.target.value)} className={inputCls}>
+              <option value="">All</option>
+              <option value="yes">Responded &mdash; Yes</option>
+              <option value="no">Not yet responded</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium" htmlFor="response-method">Contact method
+            <select id="response-method" value={method} onChange={(e) => setMethod(e.target.value)} className={inputCls}>
+              <option value="">Any</option>
+              <option value="call">Call</option>
+              <option value="email">Email</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+        </div>
         <div className="flex items-end gap-2">
           <label className="block flex-1 text-sm font-medium" htmlFor="response-date">Date of drop
             <input id="response-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
           </label>
-          {(q || date) && <button type="button" className={`${btn2Cls} mb-0.5`} onClick={() => { setQ(""); setTerm(""); setDate(""); }}>Clear</button>}
+          {(q || date || responded || method) && <button type="button" className={`${btn2Cls} mb-0.5`} onClick={() => { setQ(""); setTerm(""); setDate(""); setResponded(""); setMethod(""); }}>Clear</button>}
         </div>
       </div>
 

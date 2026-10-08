@@ -7,7 +7,7 @@ import { saveFile } from "@/lib/save-file";
 import { btn2Cls, btnCls, dropBg, errMsg, inputCls, Notice, ShowMore, useData, useDropPages } from "@/components/ui";
 
 const th = "p-3 font-medium";
-const empty = { advisor: "", from: "", to: "", city: "", building: "", q: "" };
+const empty = { advisor: "", from: "", to: "", city: "", building: "", q: "", responded: "", method: "" };
 const PAGE = 200;
 const EXPORT_BATCH = 500;
 const EXPORT_MAX = 50_000;
@@ -62,6 +62,8 @@ export default function AllDrops() {
   const filter: DropFilter = {
     advisorId: f.advisor || undefined, from: f.from || undefined, to: f.to || undefined,
     city: f.city || undefined, building: f.building || undefined, q: f.q.trim() || undefined,
+    responded: f.responded ? f.responded === "yes" : undefined,
+    method: (f.method || undefined) as DropFilter["method"],
   };
   const key = JSON.stringify(filter);
   const page = useDropPages(filter, PAGE);
@@ -146,6 +148,21 @@ export default function AllDrops() {
         <label className="block text-sm font-medium">Building
           <select value={f.building} onChange={set("building")} className={inputCls}>
             <option value="">All</option>{buildingsList.map((b) => <option key={b}>{b}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm font-medium">Response
+          <select value={f.responded} onChange={set("responded")} className={inputCls}>
+            <option value="">All</option>
+            <option value="yes">Responded &mdash; Yes</option>
+            <option value="no">Not yet responded</option>
+          </select>
+        </label>
+        <label className="block text-sm font-medium">Contact method
+          <select value={f.method} onChange={set("method")} className={inputCls}>
+            <option value="">Any</option>
+            <option value="call">Call</option>
+            <option value="email">Email</option>
+            <option value="none">None</option>
           </select>
         </label>
         <div className="col-span-2 md:col-span-3 lg:col-span-6">

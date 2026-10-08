@@ -39,7 +39,7 @@ import {
   type ActionResult,
   type ClaimResult,
 } from "@/app/actions";
-import { buildingKey, cityKey, dropIndexTokens, matchesDropSearch, matchesPlace, MAX_TOKEN_LENGTH, queryToken, searchTerms } from "@/lib/search";
+import { buildingKey, cityKey, dropIndexTokens, matchesDropSearch, matchesPlace, matchesResponse, MAX_TOKEN_LENGTH, queryToken, searchTerms } from "@/lib/search";
 import { lastMonths } from "@/lib/stats";
 import { responseContactError } from "@/lib/validate";
 import type { AccessResult, AdvisorSummary, BuildingRef, DataApi, Drop, DropFilter, Lead, LeaderboardRow, Profile } from "./types";
@@ -283,8 +283,28 @@ function scopeWhere(cityField: string, stateField: string): QueryConstraint[] {
 }
 
 /**
+ * The response-status and contact-method filters as a single Firestore equality. A drop's `responded` flag
+ * and its `response_type` move together (not responded ⇔ "none"; responded ⇔ "call"/"email"), so one
+ * equality captures both: the method when it is set ("call"/"email" on response_type, "none" reusing the
+ * responded index), otherwise the status on responded. A status + method pair that cannot co-exist (e.g.
+ * responded + "none") matches nothing — `empty` says so, and the caller skips the query.
+ */
+function responseWhere(f: DropFilter): { constraints: QueryConstraint[]; empty: boolean } {
+  const methodResponded = f.method ? f.method !== "none" : undefined; // "none" ⇒ not responded; "call"/"email" ⇒ responded
+  if (typeof f.responded === "boolean" && methodResponded !== undefined && f.responded !== methodResponded) {
+    return { constraints: [], empty: true }; // contradictory status + method: nothing can match
+  }
+  if (f.method === "none") return { constraints: [where("responded", "==", false)], empty: false };
+  if (f.method) return { constraints: [where("response_type", "==", f.method)], empty: false };
+  if (typeof f.responded === "boolean") return { constraints: [where("responded", "==", f.responded)], empty: false };
+  return { constraints: [], empty: false };
+}
+
+/**
  * Turns a filter into a Firestore query. Advisors always query their own drops (the rules require it).
  * `exact` is false when some of the filter has to be checked in the app (then counts are not available).
+ * `empty` is true when the filter cannot match anything (contradictory status + method); the caller then
+ * returns no rows / zero counts without querying.
  */
 function planDrops(f: DropFilter, extra: QueryConstraint[] = []) {
   const p = profile();
@@ -294,19 +314,22 @@ function planDrops(f: DropFilter, extra: QueryConstraint[] = []) {
   const place = f.building ? `b:${buildingKey(f.building)}` : f.city && cityKey(f.city) ? `c:${cityKey(f.city)}` : null;
   const token = word ?? place;
   const exact = !word || (terms.length === 1 && terms[0].length <= MAX_TOKEN_LENGTH && !place);
-  // Field order matches firestore.indexes.json: region_city/region_state, advisor_id, responded, search_tokens,
-  // drop_date, created_at. Operations accounts are scoped to their city or state; master sees every region.
+  const response = responseWhere(f);
+  // Field order matches firestore.indexes.json: region_city/region_state, advisor_id, responded/response_type,
+  // search_tokens, drop_date, created_at. Operations accounts are scoped to their city or state; master sees every region.
   const cs: QueryConstraint[] = [];
   cs.push(...scopeWhere("region_city", "region_state"));
   if (advisorId) cs.push(where("advisor_id", "==", advisorId));
   cs.push(...extra);
+  cs.push(...response.constraints);
   if (token) cs.push(where("search_tokens", "array-contains", token));
   if (f.from) cs.push(where("drop_date", ">=", f.from));
   if (f.to) cs.push(where("drop_date", "<=", f.to));
   return {
+    empty: response.empty,
     query: (...more: QueryConstraint[]) => query(collection(clientDb(), "drops"), ...cs, ...ORDER, ...more),
     exact,
-    keep: (d: Drop) => matchesDropSearch(d, f.q) && matchesPlace(d, f),
+    keep: (d: Drop) => matchesDropSearch(d, f.q) && matchesPlace(d, f) && matchesResponse(d, f),
   };
 }
 
@@ -443,6 +466,7 @@ export const firebaseApi: DataApi = {
 
   async findDrops(f, { limit, cursor }) {
     const plan = planDrops(f);
+    if (plan.empty) return { rows: [], cursor: null };
     const after = (cursor as DocumentSnapshot | null | undefined) ?? null;
     if (plan.exact) {
       const snap = await getDocs(plan.query(...(after ? [startAfter(after)] : []), take(limit + 1)));
@@ -469,10 +493,18 @@ export const firebaseApi: DataApi = {
 
   async countDrops(f) {
     const plan = planDrops(f);
+    if (plan.empty) return { letters: 0, responses: 0 };
     if (!plan.exact) return null;
-    const responded = planDrops(f, [where("responded", "==", true)]);
     try {
-      const [letters, responses] = await Promise.all([count(plan.query()), count(responded.query())]);
+      const letters = await count(plan.query());
+      // Responses = the matching letters that were responded to. When the response filter already pins that
+      // (every match responded, or none did), skip the second count query — and the responded + response_type
+      // composite index it would otherwise need — and derive the figure from `letters`.
+      const allResponded = f.responded === true || f.method === "call" || f.method === "email";
+      const noneResponded = f.responded === false || f.method === "none";
+      const responses = allResponded ? letters
+        : noneResponded ? 0
+        : await count(planDrops(f, [where("responded", "==", true)]).query());
       return { letters, responses };
     } catch (e) {
       if (offline(e)) return null;
