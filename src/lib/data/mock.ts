@@ -1,11 +1,13 @@
 import { buildingKey, matchesDropSearch, matchesPlace } from "@/lib/search";
 import { lastMonths, totals } from "@/lib/stats";
-import { buildSeed, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
+import { passwordError } from "@/lib/validate";
+import { buildSeed, DEMO_PASSWORD, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
+import { accessFor, canResetPassword, passwordSignIn } from "./authz";
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
-const DB_KEY = "tba.mock.db.v8";
-const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7"];
+const DB_KEY = "tba.mock.db.v9";
+const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7", "tba.mock.db.v8"];
 const SESSION_KEY = "tba.mock.session.email";
 
 let memory: MockDb | null = null;
@@ -40,13 +42,8 @@ const uid = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toStr
 const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 60));
 const cleanEmail = (e: string) => e.trim().toLowerCase();
 
-/** Same decision as the server's access check: listed and active, by Google email. */
-function access(email: string): AccessResult {
-  const p = load().profiles.find((x) => x.email === cleanEmail(email));
-  if (!p) return { status: "not_authorised", email, reason: "not_listed" };
-  if (!p.active) return { status: "not_authorised", email, reason: "deactivated" };
-  return { status: "ok", profile: p };
-}
+/** Same decision as the server's access check: listed and active, by email (Google or password). */
+const access = (email: string): AccessResult => accessFor(load().profiles, email);
 
 function me(): Profile {
   const email = getSession();
@@ -116,16 +113,29 @@ export const mockApi: DataApi = {
     setSession(a.status === "ok" ? cleanEmail(demoEmail) : null);
     return wait(a);
   },
+  async signInWithPassword(email, password) {
+    const db = load();
+    const res = passwordSignIn(db.profiles, db.passwords, email, password);
+    if ("error" in res) throw new Error(res.error); // wrong password or unknown email (same message)
+    setSession(res.ok.status === "ok" ? cleanEmail(email) : null);
+    return wait(res.ok);
+  },
+  async sendPasswordReset() {
+    // Demo: no email is actually sent. Resolve regardless so the screen shows the same confirmation either way.
+    return wait(undefined);
+  },
   async signOut() { setSession(null); },
   async demoAccounts() {
     const roleNote = (p: Profile) =>
       p.role === "advisor" ? `Advisor ${p.advisor_code} · ${p.city ?? ""}`
       : p.role === "master" ? "Master · all regions"
       : `Ops · ${p.scope_type === "state" ? "State" : "City"}: ${p.scope_value ?? "—"}`;
-    const people = load().profiles.map((p) => ({
+    const db = load();
+    const people = db.profiles.map((p) => ({
       email: p.email,
       name: p.full_name,
       note: `${roleNote(p)}${p.active ? "" : " (deactivated)"}`,
+      password: db.passwords[p.email] ?? DEMO_PASSWORD,
     }));
     return wait([...people, DEMO_UNLISTED]);
   },
@@ -143,6 +153,8 @@ export const mockApi: DataApi = {
     const db = load();
     const code = input.advisor_code.trim().toUpperCase();
     const email = cleanEmail(input.email);
+    const pwErr = passwordError(input.password);
+    if (pwErr) throw new Error(pwErr);
     if (db.profiles.some((p) => p.advisor_code === code)) throw new Error(`Advisor ID ${code} already exists.`);
     if (db.profiles.some((p) => p.email === email)) throw new Error(`${email} is already on the list.`);
     let city = input.city.trim();
@@ -160,6 +172,7 @@ export const mockApi: DataApi = {
       city, state, zip, scope_type: null, scope_value: null, active: true, created_at: new Date().toISOString(),
     };
     db.profiles.push(p);
+    db.passwords[email] = input.password; // demo: the account can now sign in with email + password
     save();
     return wait(p);
   },
@@ -171,6 +184,8 @@ export const mockApi: DataApi = {
     requireMaster();
     const db = load();
     const email = cleanEmail(input.email);
+    const pwErr = passwordError(input.password);
+    if (pwErr) throw new Error(pwErr);
     if (db.profiles.some((p) => p.email === email)) throw new Error(`${email} is already on the list.`);
     const scope_value = input.scope_value.trim();
     if (!scope_value) throw new Error(`${input.scope_type === "state" ? "State" : "City"} is required.`);
@@ -179,6 +194,7 @@ export const mockApi: DataApi = {
       city: null, state: null, zip: null, scope_type: input.scope_type, scope_value, active: true, created_at: new Date().toISOString(),
     };
     db.profiles.push(p);
+    db.passwords[email] = input.password; // demo: the account can now sign in with email + password
     save();
     return wait(p);
   },
@@ -191,6 +207,19 @@ export const mockApi: DataApi = {
     if (!allowed) throw new Error("Only master can manage operations accounts.");
     target.active = active;
     save();
+  },
+  async resetUserPassword(id, newPassword) {
+    const actor = requireOps();
+    const err = passwordError(newPassword);
+    if (err) throw new Error(err);
+    const db = load();
+    const target = db.profiles.find((p) => p.id === id);
+    if (!target) throw new Error("User not found.");
+    // Same authorisation as the server: master → anyone they manage; operations → advisors in their region only.
+    if (!canResetPassword(actor, target)) throw new Error("You are not allowed to reset this user's password.");
+    db.passwords[target.email] = newPassword;
+    save();
+    return wait(undefined);
   },
 
   async findDrops(f, { limit, cursor }) {

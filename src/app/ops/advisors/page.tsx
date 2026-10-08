@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { api } from "@/lib/data";
 import { btnCls, cardCls, errMsg, Field, inputCls, Notice, useData, useUser } from "@/components/ui";
-import { isEmail } from "@/lib/validate";
+import { ResetPasswordDialog, type ResetTarget } from "@/components/reset-password-dialog";
+import { isEmail, passwordError } from "@/lib/validate";
 
 export default function Advisors() {
   const user = useUser();
@@ -16,6 +17,7 @@ export default function Advisors() {
   });
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
+  const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
 
   async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -26,16 +28,19 @@ export default function Advisors() {
     const email = s("email").toLowerCase();
     const city = scopedCity ?? s("city");
     const state = scopedState ?? s("state");
+    const pw = String(f.get("password") ?? "");
     if (!/^[A-Z0-9_-]{3,32}$/.test(code)) return setMsg({ kind: "error", text: "Advisor ID: 3-32 letters, digits, - or _." });
     if (!city) return setMsg({ kind: "error", text: "Enter the advisor's city." });
     if (!state) return setMsg({ kind: "error", text: "Enter the advisor's state." });
-    if (!isEmail(email)) return setMsg({ kind: "error", text: "Enter the advisor's Google account email, for example name@gmail.com." });
+    if (!isEmail(email)) return setMsg({ kind: "error", text: "Enter the advisor's account email, for example name@gmail.com." });
+    const pwErr = passwordError(pw);
+    if (pwErr) return setMsg({ kind: "error", text: pwErr });
     setPending(true);
     setMsg(null);
     try {
-      await api.createAdvisor({ full_name: s("full_name"), advisor_code: code, city, state, zip: s("zip") || null, email });
+      await api.createAdvisor({ full_name: s("full_name"), advisor_code: code, city, state, zip: s("zip") || null, email, password: pw });
       form.reset();
-      setMsg({ kind: "ok", text: `Advisor ${code} added. They can now sign in with Google as ${email}.` });
+      setMsg({ kind: "ok", text: `Advisor ${code} added. They can now sign in as ${email} with the password you set, or with Google.` });
       reload();
     } catch (err) {
       setMsg({ kind: "error", text: errMsg(err) });
@@ -51,7 +56,7 @@ export default function Advisors() {
           <div className="overflow-x-auto rounded-lg border bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-600"><tr>
-                <th className="p-3 font-medium">ID</th><th className="p-3 font-medium">Name</th><th className="p-3 font-medium">Google email</th>
+                <th className="p-3 font-medium">ID</th><th className="p-3 font-medium">Name</th><th className="p-3 font-medium">Email</th>
                 <th className="p-3 font-medium">City</th><th className="p-3 font-medium">State</th><th className="p-3 font-medium">Status</th>
               </tr></thead>
               <tbody>
@@ -65,6 +70,10 @@ export default function Advisors() {
                         onClick={() => api.setUserActive(a.id, !a.active).then(reload, (e) => setMsg({ kind: "error", text: errMsg(e) }))}>
                         {a.active ? "Deactivate" : "Reactivate"}
                       </button>
+                      <button className="ml-2 text-xs text-green-700 underline"
+                        onClick={() => setResetTarget({ id: a.id, full_name: a.full_name, email: a.email })}>
+                        Reset password
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -76,7 +85,7 @@ export default function Advisors() {
       <section>
         <h2 className="mb-1 text-lg font-semibold">Add advisor</h2>
         <p className="mb-4 text-sm text-slate-600">
-          Only people on this list can sign in. They use Google with the email below.
+          Only people on this list can sign in. They sign in with the email and initial password below, or with Google.
           {scopedCity && <> New advisors are added to <span className="font-medium">{scopedCity}</span>.</>}
           {scopedState && <> New advisors are added in <span className="font-medium">{scopedState}</span>.</>}
         </p>
@@ -98,11 +107,14 @@ export default function Advisors() {
             <Field name="state" label="State" placeholder="Gujarat" />
           )}
           <Field name="zip" label="Zip code" required={false} placeholder="360001" />
-          <Field name="email" label="Google email" type="email" autoComplete="off" placeholder="name@gmail.com" />
+          <Field name="email" label="Email" type="email" autoComplete="off" placeholder="name@gmail.com" />
+          <Field name="password" label="Initial password" type="password" autoComplete="new-password" placeholder="At least 8 characters" />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
           <button disabled={pending} className={`${btnCls} w-full`}>{pending ? "Adding..." : "Add advisor"}</button>
         </form>
       </section>
+      <ResetPasswordDialog target={resetTarget} onClose={() => setResetTarget(null)}
+        onDone={(text) => { setResetTarget(null); setMsg({ kind: "ok", text }); reload(); }} />
     </div>
   );
 }

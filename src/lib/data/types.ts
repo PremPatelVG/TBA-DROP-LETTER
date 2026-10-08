@@ -9,12 +9,12 @@ export type ResponseType = "call" | "email" | "none";
  */
 export type OpsScopeType = "city" | "state";
 
-/** A person on the access list. Everyone signs in with Google using `email`. */
+/** A person on the access list. Everyone signs in with `email` — email+password or Google (same identity). */
 export type Profile = {
   id: string;
   role: Role;
   full_name: string;
-  /** Google account email, lower-case. Only listed emails can use the app. */
+  /** Account email, lower-case (the sign-in identity for both Google and email/password). Only listed emails can use the app. */
   email: string;
   advisor_code: string | null;
   /**
@@ -119,8 +119,9 @@ export type LeadInput = {
 };
 export type Lead = LeadInput & { id: string; advisor_id: string; created_at: string };
 
-export type NewOpsUser = { full_name: string; email: string; scope_type: OpsScopeType; scope_value: string };
-export type NewAdvisor = { full_name: string; advisor_code: string; email: string; city: string; state: string; zip: string | null };
+/** `password` is the initial sign-in password the admin sets; the account is provisioned in Firebase Auth with it. */
+export type NewOpsUser = { full_name: string; email: string; scope_type: OpsScopeType; scope_value: string; password: string };
+export type NewAdvisor = { full_name: string; advisor_code: string; email: string; city: string; state: string; zip: string | null; password: string };
 
 /** Outcome of signing in. Only people on the access list who are active get `ok`. */
 export type AccessResult =
@@ -129,12 +130,12 @@ export type AccessResult =
   | { status: "cancelled" }
   | { status: "redirecting" };
 
-/** A Google account offered by the demo sign-in (demo data only). */
-export type DemoAccount = { email: string; name: string; note: string };
+/** A Google account offered by the demo sign-in (demo data only). `password` is shown so the email+password flow can be tried. */
+export type DemoAccount = { email: string; name: string; note: string; password: string };
 
 /**
  * Everything the UI needs from the back end. `mock.ts` implements it with in-browser demo data;
- * `firebase.ts` implements it with Firebase Auth (Google sign-in) and Firestore. Pick one in `index.ts`.
+ * `firebase.ts` implements it with Firebase Auth (Google and email/password sign-in) and Firestore. Pick one in `index.ts`.
  * Who may see or change what is enforced by the Firestore security rules and imitated by the mock.
  */
 export interface DataApi {
@@ -146,6 +147,13 @@ export interface DataApi {
    * (blocked, or an installed iPhone app). The demo data takes the email of a demo account instead.
    */
   signInWithGoogle(opts?: { demoEmail?: string; redirect?: boolean }): Promise<AccessResult>;
+  /**
+   * Email + password sign-in (Firebase Auth's Email/Password provider). The email is the identity, the same one
+   * used for Google and on the access list. Rejects with a friendly message for a wrong password or unknown email.
+   */
+  signInWithPassword(email: string, password: string): Promise<AccessResult>;
+  /** Sends a password-reset email (Firebase Auth). Resolves even for an unknown email, so it reveals nothing. */
+  sendPasswordReset(email: string): Promise<void>;
   /** Refuses (with a message) while entries saved offline are still waiting to sync. */
   signOut(): Promise<void>;
   /** Demo data only: the Google accounts offered on the sign-in screen. */
@@ -160,6 +168,11 @@ export interface DataApi {
   createOpsUser(input: NewOpsUser): Promise<Profile>;
   /** Master: operations accounts. Operations or master: advisors. Deactivated people cannot sign in. */
   setUserActive(id: string, active: boolean): Promise<void>;
+  /**
+   * Reset the password of a user the caller manages (master: any operations account or advisor; an operations
+   * account: advisors in its own region only). Sets the new password in Firebase Auth; see {@link canResetPassword}.
+   */
+  resetUserPassword(id: string, newPassword: string): Promise<void>;
 
   /** Newest first. Returns up to `limit` rows and a cursor for the next page (null when there are no more). */
   findDrops(filter: DropFilter, page: { limit: number; cursor?: Cursor | null }): Promise<DropPage>;

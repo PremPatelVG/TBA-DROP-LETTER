@@ -6,10 +6,11 @@
 // ({ role, pid }), which only this file sets. Access-list documents (users/*) can only be written here:
 // the security rules refuse all client writes to them.
 
-import { FieldValue, Timestamp, type DocumentSnapshot } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type DocumentReference, type DocumentSnapshot } from "firebase-admin/firestore";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
-import { isEmail } from "@/lib/validate";
+import { isEmail, passwordError } from "@/lib/validate";
+import { canResetPassword } from "@/lib/data/authz";
 import type { NewAdvisor, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -124,10 +125,14 @@ export async function claimAccess(idToken: string): Promise<ClaimResult> {
   }
 
   const email = (token.email ?? "").toLowerCase();
-  const google = token.firebase?.sign_in_provider === "google.com" && token.email_verified === true;
-  const entry = email && google ? await findByEmail(email) : null;
+  // Both configured providers are honoured; the email is the identity either way. Password accounts are created
+  // by an admin with the verified access-list email (see createAdvisor/createOpsUser), so email_verified holds.
+  const provider = token.firebase?.sign_in_provider;
+  const trusted = (provider === "google.com" || provider === "password") && token.email_verified === true;
+  const entry = email && trusted ? await findByEmail(email) : null;
   if (!entry) {
-    // Firebase creates an account on every Google sign-in; remove the ones that are not on the list.
+    // Firebase creates an account on every Google sign-in; remove the ones that are not on the list. (Password
+    // accounts only exist for listed emails, so this normally removes stray Google sign-ins.)
     await auth.deleteUser(token.uid).catch(() => {});
     return { status: "not_authorised", email: email || null, reason: "not_listed" };
   }
@@ -163,8 +168,31 @@ function text(v: unknown, label: string, max: number) {
 }
 function googleEmail(v: unknown) {
   const e = String(v ?? "").trim().toLowerCase();
-  if (!isEmail(e)) throw new Refusal("Enter the person's Google account email, for example name@gmail.com.");
+  if (!isEmail(e)) throw new Refusal("Enter the person's email, for example name@gmail.com.");
   return e;
+}
+/** The initial/reset password. Never logged. Validated the same as on the client (min length, max length). */
+function password(v: unknown) {
+  const s = String(v ?? "");
+  const err = passwordError(s);
+  if (err) throw new Refusal(err);
+  return s;
+}
+/**
+ * Creates the Firebase Auth user for an access entry with the chosen password (email/password provider), or, if a
+ * Firebase account already exists for the email (e.g. a prior Google sign-in), sets the password on it. The email
+ * is marked verified because it is the access-list email the admin vouches for. Returns the Firebase uid to link.
+ */
+async function provisionSignIn(email: string, pw: string, displayName: string) {
+  const auth = adminAuth();
+  try {
+    return (await auth.createUser({ email, password: pw, emailVerified: true, displayName })).uid;
+  } catch (e) {
+    if (code(e) !== "auth/email-already-exists") throw e;
+    const existing = await auth.getUserByEmail(email);
+    await auth.updateUser(existing.uid, { password: pw, emailVerified: true });
+    return existing.uid;
+  }
 }
 /** Optional free text: null when blank, otherwise trimmed and length-checked. */
 function optInput(v: unknown, label: string, max: number) {
@@ -174,7 +202,7 @@ function optInput(v: unknown, label: string, max: number) {
   return s;
 }
 
-/** Operations or master: add an advisor to the access list. They sign in with Google using `email`. */
+/** Operations or master: add an advisor to the access list. They sign in with `email` (the initial password, or Google). */
 export async function createAdvisor(idToken: string, input: NewAdvisor): Promise<ActionResult<Profile>> {
   return run("add the advisor", async () => {
     const me = await caller(idToken, ["operations", "master"]);
@@ -185,6 +213,7 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
     let state = text(input.state, "State", 100);
     const zip = optInput(input.zip, "Zip code", 16);
     const email = googleEmail(input.email);
+    const pw = password(input.password);
     // Operations accounts can only add advisors inside their own region: force the scoped dimension so the
     // new advisor is always within what the account can see (the other dimension is entered by the account).
     if (me.role === "operations") {
@@ -206,8 +235,21 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
         created_at: FieldValue.serverTimestamp(), created_by: me.pid,
       });
     });
+    await linkSignIn(ref, email, pw, full_name);
     return toProfile(await ref.get());
   });
+}
+
+/** Provisions the Firebase Auth user for a freshly created access entry and links its uid; rolls the entry back on failure. */
+async function linkSignIn(ref: DocumentReference, email: string, pw: string, displayName: string) {
+  try {
+    const uid = await provisionSignIn(email, pw, displayName);
+    await ref.update({ uid });
+  } catch (e) {
+    await ref.delete().catch(() => {});
+    console.error("provision sign-in failed", e);
+    throw new Refusal("Could not set up the sign-in account. Please check the email and try again.");
+  }
 }
 
 /** Master only: add an operations person to the access list, scoped to one city or one whole state. */
@@ -216,6 +258,7 @@ export async function createOpsUser(idToken: string, input: NewOpsUser): Promise
     const me = await caller(idToken, ["master"]);
     const full_name = text(input.full_name, "Name", 100);
     const email = googleEmail(input.email);
+    const pw = password(input.password);
     const scope_type = input.scope_type;
     if (!SCOPE_TYPES.includes(scope_type)) throw new Refusal("Choose whether this account covers a city or a state.");
     const scope_value = text(input.scope_value, scope_type === "city" ? "City" : "State", 100);
@@ -229,6 +272,7 @@ export async function createOpsUser(idToken: string, input: NewOpsUser): Promise
         created_at: FieldValue.serverTimestamp(), created_by: me.pid,
       });
     });
+    await linkSignIn(ref, email, pw, full_name);
     return toProfile(await ref.get());
   });
 }
@@ -253,6 +297,35 @@ export async function setUserActive(idToken: string, id: string, active: boolean
       const auth = adminAuth();
       await auth.updateUser(t.uid, { disabled: !active }).catch((e) => { if (code(e) !== "auth/user-not-found") throw e; });
       if (!active) await auth.revokeRefreshTokens(t.uid).catch((e) => { if (code(e) !== "auth/user-not-found") throw e; });
+    }
+    return null;
+  });
+}
+
+/**
+ * Reset the password of a user the caller manages (master: any operations account or advisor; an operations
+ * account: advisors in its own region only — enforced server-side by {@link canResetPassword}). Sets the new
+ * password on the target's Firebase Auth user (creating it if the person had never signed in). The password is
+ * never logged, and nothing about it is stored in Firestore.
+ */
+export async function resetUserPassword(idToken: string, id: string, newPassword: string): Promise<ActionResult<null>> {
+  return run("reset the password", async () => {
+    const me = await caller(idToken, ["operations", "master"]);
+    const pw = password(newPassword);
+    const ref = adminDb().collection("users").doc(id);
+    const t = (await ref.get()).data();
+    if (!t) throw new Refusal("User not found.");
+    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null };
+    if (!canResetPassword(me, target)) throw new Refusal("You are not allowed to reset this user's password.");
+    const auth = adminAuth();
+    let uid: string | null = typeof t.uid === "string" ? t.uid : null;
+    if (!uid) uid = (await auth.getUserByEmail(t.email).catch(() => null))?.uid ?? null;
+    if (uid) {
+      await auth.updateUser(uid, { password: pw, emailVerified: true });
+    } else {
+      // Never signed in and no Firebase account yet: create it now with the new password.
+      const created = await auth.createUser({ email: t.email, password: pw, emailVerified: true, displayName: t.full_name, disabled: t.active !== true });
+      await ref.update({ uid: created.uid });
     }
     return null;
   });

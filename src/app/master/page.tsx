@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { api, type OpsScopeType } from "@/lib/data";
 import { btn2Cls, btnCls, cardCls, errMsg, Field, inputCls, Notice, useData } from "@/components/ui";
-import { isEmail } from "@/lib/validate";
+import { ResetPasswordDialog, type ResetTarget } from "@/components/reset-password-dialog";
+import { isEmail, passwordError } from "@/lib/validate";
 
 const scopeLabel = (t: OpsScopeType | null, v: string | null) =>
   t && v ? `${t === "state" ? "State" : "City"}: ${v}` : "—";
@@ -13,6 +14,7 @@ export default function OperationsAccounts() {
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
   const [scopeType, setScopeType] = useState<OpsScopeType>("city");
+  const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
 
   async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -21,15 +23,18 @@ export default function OperationsAccounts() {
     const s = (k: string) => String(f.get(k) ?? "").trim();
     const email = s("email").toLowerCase();
     const scope_value = s("scope_value");
-    if (!isEmail(email)) return setMsg({ kind: "error", text: "Enter their Google account email, for example name@gmail.com." });
+    const pw = String(f.get("password") ?? "");
+    if (!isEmail(email)) return setMsg({ kind: "error", text: "Enter their account email, for example name@gmail.com." });
     if (!scope_value) return setMsg({ kind: "error", text: `Enter the ${scopeType} this account manages.` });
+    const pwErr = passwordError(pw);
+    if (pwErr) return setMsg({ kind: "error", text: pwErr });
     setPending(true);
     setMsg(null);
     try {
-      const p = await api.createOpsUser({ full_name: s("full_name"), email, scope_type: scopeType, scope_value });
+      const p = await api.createOpsUser({ full_name: s("full_name"), email, scope_type: scopeType, scope_value, password: pw });
       form.reset();
       setScopeType("city");
-      setMsg({ kind: "ok", text: `${p.full_name} added to operations for ${scopeLabel(p.scope_type, p.scope_value)}. They can now sign in with Google as ${p.email}.` });
+      setMsg({ kind: "ok", text: `${p.full_name} added to operations for ${scopeLabel(p.scope_type, p.scope_value)}. They can now sign in as ${p.email} with the password you set, or with Google.` });
       reload();
     } catch (err) {
       setMsg({ kind: "error", text: errMsg(err) });
@@ -55,7 +60,7 @@ export default function OperationsAccounts() {
           <div className="overflow-x-auto rounded-lg border bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-600"><tr>
-                <th className="p-3 font-medium">Name</th><th className="p-3 font-medium">Google email</th>
+                <th className="p-3 font-medium">Name</th><th className="p-3 font-medium">Email</th>
                 <th className="p-3 font-medium">Region</th><th className="p-3 font-medium">Status</th><th className="p-3 font-medium"><span className="sr-only">Actions</span></th>
               </tr></thead>
               <tbody>
@@ -65,7 +70,10 @@ export default function OperationsAccounts() {
                     <td className="p-3">{scopeLabel(u.scope_type, u.scope_value)}</td>
                     <td className="p-3">{u.active ? <span className="text-green-700">Active</span> : "Deactivated"}</td>
                     <td className="p-3 text-right">
-                      <button className={btn2Cls} onClick={() => toggle(u.id, !u.active)}>{u.active ? "Deactivate" : "Reactivate"}</button>
+                      <div className="flex justify-end gap-2">
+                        <button className={btn2Cls} onClick={() => setResetTarget({ id: u.id, full_name: u.full_name, email: u.email })}>Reset password</button>
+                        <button className={btn2Cls} onClick={() => toggle(u.id, !u.active)}>{u.active ? "Deactivate" : "Reactivate"}</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -79,7 +87,7 @@ export default function OperationsAccounts() {
         <h2 className="mb-4 text-lg font-semibold">Add operations account</h2>
         <form onSubmit={create} className={`${cardCls} space-y-4 p-4`}>
           <Field name="full_name" label="Full name" />
-          <Field name="email" label="Google email" type="email" autoComplete="off" placeholder="name@gmail.com" />
+          <Field name="email" label="Email" type="email" autoComplete="off" placeholder="name@gmail.com" />
           <label className="block text-sm font-medium">Manages<span className="text-red-500"> *</span>
             <select name="scope_type" value={scopeType} onChange={(e) => setScopeType(e.target.value as OpsScopeType)} className={inputCls}>
               <option value="city">One city</option>
@@ -87,10 +95,13 @@ export default function OperationsAccounts() {
             </select>
           </label>
           <Field name="scope_value" label={scopeType === "state" ? "State name" : "City name"} placeholder={scopeType === "state" ? "Gujarat" : "Rajkot"} />
+          <Field name="password" label="Initial password" type="password" autoComplete="new-password" placeholder="At least 8 characters" />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
           <button disabled={pending} className={`${btnCls} w-full`}>{pending ? "Adding..." : "Add account"}</button>
         </form>
       </section>
+      <ResetPasswordDialog target={resetTarget} onClose={() => setResetTarget(null)}
+        onDone={(text) => { setResetTarget(null); setMsg({ kind: "ok", text }); }} />
     </div>
   );
 }

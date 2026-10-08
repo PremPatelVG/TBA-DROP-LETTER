@@ -277,6 +277,7 @@ try {
     await page.fill("input[name=full_name]", "Asha Patel"); await page.fill("input[name=advisor_code]", "adv004");
     // This operations account is scoped to the whole state of Gujarat, so State is fixed and City is entered here.
     await page.fill("input[name=city]", "Rajkot"); await page.fill("input[name=email]", "asha.patel@example.com");
+    await page.fill("input[name=password]", "advisor-pass-1");
     await page.getByRole("button", { name: "Add advisor" }).click();
     await page.getByText("Advisor ADV004 added").waitFor();
     await page.locator("tr", { hasText: "Neha Desai" }).getByRole("button", { name: "Deactivate" }).click();
@@ -292,6 +293,7 @@ try {
     await page.fill("input[name=full_name]", "Dev Shah"); await page.fill("input[name=email]", "dev.shah@example.com");
     await page.selectOption("select[name=scope_type]", "city");
     await page.fill("input[name=scope_value]", "Ahmedabad");
+    await page.fill("input[name=password]", "opsmanager-pass-1");
     await page.getByRole("button", { name: "Add account" }).click();
     await page.getByText("Dev Shah added to operations").waitFor();
     await shot("07-master");

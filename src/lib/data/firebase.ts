@@ -21,7 +21,9 @@ import {
 import {
   getRedirectResult,
   GoogleAuthProvider,
+  sendPasswordResetEmail,
   signInWithCredential,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
   signOut as authSignOut,
@@ -32,6 +34,7 @@ import {
   claimAccess,
   createAdvisor as createAdvisorAction,
   createOpsUser as createOpsUserAction,
+  resetUserPassword as resetUserPasswordAction,
   setUserActive as setUserActiveAction,
   type ActionResult,
   type ClaimResult,
@@ -42,7 +45,7 @@ import { responseContactError } from "@/lib/validate";
 import type { AccessResult, AdvisorSummary, BuildingRef, DataApi, Drop, DropFilter, Lead, LeaderboardRow, Profile } from "./types";
 
 /*
- * Firebase implementation of the data layer: Google sign-in (Firebase Auth) and Firestore.
+ * Firebase implementation of the data layer: Google and email/password sign-in (Firebase Auth) and Firestore.
  * Who may read or write what is enforced by firestore.rules; this file only asks for what the rules allow.
  *
  * Collections: users (the access list), drops, direct_leads, buildings (one per advisor and building, for
@@ -127,6 +130,17 @@ function authError(e: unknown): AccessResult | null {
     return { status: "not_authorised", email, reason: "deactivated" };
   }
   return null;
+}
+
+/** A friendly message for an email/password sign-in failure. A wrong password and an unknown email read the same. */
+function passwordSignInMessage(c: string): string {
+  switch (c) {
+    case "auth/invalid-email": return "Enter a valid email address.";
+    case "auth/missing-password": return "Enter your password.";
+    case "auth/too-many-requests": return "Too many attempts. Wait a few minutes, then try again or reset your password.";
+    case "auth/network-request-failed": return "You appear to be offline. Connect to the internet and try again.";
+    default: return "Incorrect email or password."; // auth/invalid-credential, auth/wrong-password, auth/user-not-found
+  }
 }
 
 /** Works out what a signed-in Firebase user may do: their access entry, or "not authorised". */
@@ -352,6 +366,34 @@ export const firebaseApi: DataApi = {
     }
   },
 
+  async signInWithPassword(email, password) {
+    await ready();
+    const auth = clientAuth();
+    const trimmed = email.trim();
+    try {
+      const cred = await signInWithEmailAndPassword(auth, trimmed, password);
+      return await resolveAccess(cred.user, true);
+    } catch (e) {
+      const c = code(e);
+      // A deactivated account's Firebase user is disabled: show the "access turned off" screen, like Google does.
+      if (c === "auth/user-disabled") return { status: "not_authorised", email: trimmed.toLowerCase(), reason: "deactivated" };
+      throw new Error(passwordSignInMessage(c));
+    }
+  },
+
+  async sendPasswordReset(email) {
+    const auth = clientAuth();
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+    } catch (e) {
+      const c = code(e);
+      if (c === "auth/invalid-email") throw new Error("Enter a valid email address.");
+      if (c === "auth/network-request-failed") throw new Error("You appear to be offline. Connect to the internet and try again.");
+      if (c === "auth/user-not-found") return; // reveal nothing about which emails exist
+      throw new Error("Could not send the reset email. Please try again.");
+    }
+  },
+
   async signOut() {
     const auth = clientAuth();
     const db = clientDb();
@@ -392,6 +434,9 @@ export const firebaseApi: DataApi = {
   },
   async setUserActive(id, active) {
     unwrap(await setUserActiveAction(await idToken(), id, active));
+  },
+  async resetUserPassword(id, newPassword) {
+    unwrap(await resetUserPasswordAction(await idToken(), id, newPassword));
   },
 
   // ----- drops -----

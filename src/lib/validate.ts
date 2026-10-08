@@ -8,6 +8,20 @@ export function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+/** Shortest password we accept when an account is created or its password is reset. */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Checks a password being SET (at account creation or on an admin/self reset), not one being typed to sign in.
+ * At least {@link MIN_PASSWORD_LENGTH} characters, and not absurdly long. Returns a message, or null when fine.
+ */
+export function passwordError(password: string): string | null {
+  if (!password) return "Enter a password.";
+  if (password.length < MIN_PASSWORD_LENGTH) return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (password.length > 128) return "Password is too long (at most 128 characters).";
+  return null;
+}
+
 export type ContactField = "phone" | "email";
 
 /**

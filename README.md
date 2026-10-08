@@ -3,9 +3,9 @@
 App for tracking letter drops. Field advisors log each drop in an Android app (or the same pages in a phone
 browser); the operations team (desktop web) manages advisors, searches all drops, exports them and sees the analytics.
 
-Stack: Next.js 15 (App Router, TypeScript), Tailwind CSS 4, Firebase (Google sign-in, Firestore, a scheduled
-Cloud Function), hosted on Firebase App Hosting by default. The Android app is a Trusted Web Activity made with
-Bubblewrap: it opens the live advisor pages full screen in Chrome.
+Stack: Next.js 15 (App Router, TypeScript), Tailwind CSS 4, Firebase (Google and email/password sign-in,
+Firestore, a scheduled Cloud Function), hosted on Firebase App Hosting by default. The Android app is a Trusted
+Web Activity made with Bubblewrap: it opens the live advisor pages full screen in Chrome.
 
 - [Quick start (demo mode)](#quick-start-demo-mode-no-backend)
 - [Go live: step by step](#go-live-step-by-step) (for a non-developer)
@@ -19,9 +19,10 @@ Bubblewrap: it opens the live advisor pages full screen in Chrome.
 npm install
 npm run dev      # http://localhost:3000
 ```
-Demo mode is on by default (`NEXT_PUBLIC_USE_MOCK` unset or `true`). "Sign in with Google" opens a demo account
-chooser: **Master Admin** (everything operations sees, plus managing operations accounts), **Ops Admin** for the
-operations screens, an advisor (ADV001-ADV003), or **Visitor**, who is not on the access list and is refused.
+Demo mode is on by default (`NEXT_PUBLIC_USE_MOCK` unset or `true`). You can sign in with an email and the shared
+demo password (shown on the sign-in screen, `demo1234`), or "Sign in with Google" opens a demo account chooser:
+**Master Admin** (everything operations sees, plus managing operations accounts), **Ops Admin** for the operations
+screens, an advisor (ADV001-ADV003), or **Visitor**, who is not on the access list and is refused.
 Sample data (3 advisors, about 2,700 letters: a small pilot from April, then a ramp-up over the last two months,
 so this week's progress shows roughly 60-180 letters) is stored in the browser's localStorage; "Reset demo data"
 on the login screen restores it.
@@ -32,9 +33,10 @@ on the login screen restores it.
 - `master`: everything operations can do, plus `/master` to add, deactivate and reactivate operations accounts.
   Only master can manage operations accounts.
 
-Everyone signs in with Google. Only people added in advance can use the app: master adds operations, operations
-(or master) add advisors, each with their Google email. Anyone else who signs in sees "You don't have access" and
-is signed out; a deactivated person sees "Your access has been turned off".
+Everyone signs in with an email and password or with Google (same email either way). Only people added in advance
+can use the app: master adds operations, operations (or master) add advisors, each with their email and an initial
+password. Anyone else who signs in sees "You don't have access" and is signed out; a deactivated person sees "Your
+access has been turned off".
 
 ## Screens
 Advisor (mobile screens with bottom navigation; the Android app opens them full screen, and they also work in a
@@ -99,10 +101,14 @@ The weekly belt snapshot (a scheduled Cloud Function) and App Hosting need the p
 3. Location: **asia-south1 (Mumbai)** for a team in India. It cannot be changed later.
 4. Choose **Start in production mode** and click **Create**. (The real security rules are uploaded in step 7.)
 
-### 4. Turn on Google sign-in
+### 4. Turn on sign-in (Google and Email/Password)
+People can sign in either with Google or with an email and password; the email is the same identity for both.
 1. Open **Authentication** > **Get started** > **Sign-in method** tab.
 2. Click **Google**, switch **Enable** on, pick your email as the "support email", click **Save**.
-Leave every other sign-in method off.
+3. Click **Add new provider** > **Email/Password**, switch the first **Enable** on (leave "Email link" off),
+   click **Save**.
+4. Leave **Settings** > **User account linking** on its default, **Link accounts that use the same email** (so a
+   person who uses both Google and a password keeps one account). Leave every other sign-in method off.
 
 ### 5. Install Node.js and get the project files
 1. Install **Node.js** version 24 (LTS) or 22 from https://nodejs.org. Check it in a new terminal:
@@ -151,6 +157,13 @@ npm run create-master -- --email you@yourcompany.in --name "Your Name"
 It creates the master entry and uses the login from step 6.
 It is safe to run again, for example to fix the name or to restore master access.
 
+To let the master sign in with an email and password as well as Google, add a password (at least 8 characters):
+```
+npm run create-master -- --email you@yourcompany.in --name "Your Name" --password "a-strong-password"
+```
+The password is set on the master's sign-in account only; it is never stored in the database. (Everyone else gets
+their initial password when you add them in step 10.)
+
 If it says it has **no access**: run `npx firebase login --reauth` and try again. If it still fails, use a key
 file: Firebase console > gear icon > **Project settings** > **Service accounts** > **Generate new private key**,
 save the file in the project folder as `service-account.json`, run the command again, then **delete the file**
@@ -176,11 +189,20 @@ that up once:
 If you later add your own domain, repeat 2-5 with that domain.
 
 ### 10. Sign in and add people
-1. Open the app's address and click **Sign in with Google** with the master account.
-2. **Master** screen: add each operations person (name and the Google email they will sign in with).
+1. Open the app's address and sign in with the master account (Google, or the email and password if you set one
+   in step 8).
+2. **Master** screen: add each operations person (name, the email they will sign in with, and an **initial
+   password** of at least 8 characters).
 3. **Advisors** screen (operations or master): **Add advisor** with full name, advisor ID (e.g. `ADV001`),
-   region and their Google email. Advisors are ranked by the belt system from their entries each week; there is
-   nothing else to set up.
+   region, their email and an **initial password**. Advisors are ranked by the belt system from their entries
+   each week; there is nothing else to set up.
+
+Everyone can then sign in with that email and password, or with Google using the same email. Tell each person
+their initial password; they (or you) can change it afterwards:
+- **They** can use **Forgot password?** on the sign-in screen to get a reset link by email.
+- **You** can reset it for them: on the **Advisors** screen (for advisors) or the **Operations accounts** screen
+  (master, for operations accounts), click **Reset password** next to the person and set a new one. An operations
+  manager can reset only advisors in their own region; the master can reset anyone.
 
 To remove someone, click **Deactivate** next to them: they lose access at once and are signed out
 (**Reactivate** undoes it).
@@ -314,19 +336,27 @@ data, or Google Play updates it.
 ## How it works on Firebase
 
 ### Sign-in and the access list
-- Google sign-in for every role (`src/lib/data/firebase.ts`): a pop-up first; the page-based redirect when the
-  pop-up is blocked or not supported, in the iPhone home-screen app, in the Android app (detected by its
-  `android-app://` referrer, remembered for the session), or from the "Sign in on this page" link.
+- Two sign-in methods for every role (`src/lib/data/firebase.ts`), both using Firebase Authentication and keyed by
+  email: **email + password** (`signInWithEmailAndPassword`), and **Google** — a pop-up first, then the page-based
+  redirect when the pop-up is blocked or not supported, in the iPhone home-screen app, in the Android app (detected
+  by its `android-app://` referrer, remembered for the session), or from the "Sign in on this page" link.
+  Passwords are stored and checked by Firebase Authentication; nothing about them is ever written to Firestore.
 - After sign-in the browser calls the server action `claimAccess` (`src/app/actions.ts`, Admin SDK). It verifies
-  the ID token (Google provider, verified email) and looks the email up in `users`. Not listed: the new Auth
-  account is deleted and the person sees "You don't have access". Deactivated: the Auth account is disabled and
-  its sessions revoked. Otherwise it stores the custom claims `{ role, pid }` (pid = the `users` document ID) and
-  the Auth uid on the entry.
-- Every other server action (`createAdvisor`, `createOpsUser`, `setUserActive`) verifies
-  the caller's ID token (including revocation) and role again, against the `users` entry.
+  the ID token (a Google or password provider, verified email) and looks the email up in `users`. Not listed: the
+  new Auth account is deleted and the person sees "You don't have access". Deactivated: the Auth account is
+  disabled and its sessions revoked. Otherwise it stores the custom claims `{ role, pid }` (pid = the `users`
+  document ID) and the Auth uid on the entry.
+- When an admin adds a user, `createAdvisor`/`createOpsUser` also provision that person's Firebase Auth user with
+  the initial password (`admin.auth().createUser`, email marked verified because it is the access-list email).
+  `resetUserPassword` sets a new password (`admin.auth().updateUser`) for a user the caller manages — the master
+  for any operations account or advisor, an operations manager only for advisors in its own region (enforced by
+  `canResetPassword` in `src/lib/data/authz.ts`). People can also reset their own password by email
+  (`sendPasswordResetEmail`, the "Forgot password?" link). Every server action verifies the caller's ID token
+  (including revocation) and role again, against the `users` entry.
 - Deactivating disables the Auth account and revokes its refresh tokens; the security rules also re-read the
-  `users` entry on every request, so access stops at once, not when the token expires.
-- The first master: `scripts/create-master.mjs` (`npm run create-master`).
+  `users` entry on every request, so access stops at once, not when the token expires. The auth method does not
+  change anyone's role or region, so the Firestore security rules are unchanged.
+- The first master: `scripts/create-master.mjs` (`npm run create-master`, with an optional `--password`).
 
 ### Data (Firestore)
 | Collection | Contents | Written by |

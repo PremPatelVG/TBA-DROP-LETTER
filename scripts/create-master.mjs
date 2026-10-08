@@ -2,6 +2,11 @@
 // Creates the first master account. Safe to run again.
 //
 //   npm run create-master -- --email you@gmail.com --name "Your Name"
+//   npm run create-master -- --email you@gmail.com --name "Your Name" --password "a-strong-password"
+//
+// Without --password the master signs in with Google (as before). With it, the master can ALSO sign in with
+// email + password (the password is set on their Firebase Auth account; at least 8 characters). It is never
+// stored in Firestore. Prefer setting it via a password manager; it is passed on the command line here only.
 //
 // Credentials (the first that applies):
 //   the local emulators, when FIRESTORE_EMULATOR_HOST is set (project demo-tba);
@@ -40,13 +45,15 @@ async function firebaseLoginCredentials() {
 }
 
 const { values: args } = parseArgs({
-  options: { email: { type: "string" }, name: { type: "string" }, key: { type: "string" }, project: { type: "string" } },
+  options: { email: { type: "string" }, name: { type: "string" }, key: { type: "string" }, project: { type: "string" }, password: { type: "string" } },
 });
 const email = (args.email ?? "").trim().toLowerCase();
 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-  fail('give the Google account email, for example:\n  npm run create-master -- --email you@gmail.com --name "Your Name"');
+  fail('give the account email, for example:\n  npm run create-master -- --email you@gmail.com --name "Your Name"');
 }
 const name = (args.name ?? "").trim() || email.split("@")[0];
+const password = args.password ?? null;
+if (password !== null && password.length < 8) fail("the --password must be at least 8 characters.");
 
 const emulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 const keyPath = args.key ?? (existsSync("service-account.json") ? "service-account.json" : null);
@@ -82,15 +89,17 @@ const db = getFirestore();
 
 try {
   const found = await db.collection("users").where("email", "==", email).limit(1).get();
+  let entryRef;
   if (found.empty) {
     // Master is unrestricted (no franchise scope): it sees every region. Only operations accounts carry a scope.
-    await db.collection("users").add({
+    entryRef = await db.collection("users").add({
       role: "master", full_name: name, email, advisor_code: null,
       city: null, state: null, zip: null, scope_type: null, scope_value: null, active: true, uid: null,
       created_at: FieldValue.serverTimestamp(), created_by: "create-master script",
     });
   } else {
     const entry = found.docs[0];
+    entryRef = entry.ref;
     const u = entry.data();
     await entry.ref.update({ role: "master", active: true, ...(args.name ? { full_name: name } : {}) });
     if (u.uid) {
@@ -100,8 +109,24 @@ try {
       await auth.setCustomUserClaims(u.uid, { role: "master", pid: entry.id }).catch(() => {});
     }
   }
+  if (password !== null) {
+    // Provision (or update) the Firebase Auth user so the master can sign in with email + password too.
+    const auth = getAuth();
+    let uid;
+    try {
+      uid = (await auth.createUser({ email, password, emailVerified: true, displayName: name })).uid;
+    } catch (e) {
+      if (String(e?.code) !== "auth/email-already-exists") throw e;
+      uid = (await auth.getUserByEmail(email)).uid;
+      await auth.updateUser(uid, { password, emailVerified: true, disabled: false });
+    }
+    await entryRef.update({ uid });
+    await auth.setCustomUserClaims(uid, { role: "master", pid: entryRef.id });
+  }
   console.log(`\nDone. ${email} is a master account in project ${projectId}.`);
-  console.log("Open the app and choose \"Sign in with Google\" with that Google account.\n");
+  console.log(password !== null
+    ? "Open the app and sign in with that email and the password you set (Google also works).\n"
+    : "Open the app and choose \"Sign in with Google\" with that Google account.\n");
   process.exit(0);
 } catch (e) {
   explain(e);

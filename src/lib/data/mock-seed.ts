@@ -6,13 +6,18 @@ export type MockDb = {
   profiles: Profile[];
   drops: Drop[];
   leads: Lead[];
+  /** Demo-only credentials: email → password, standing in for Firebase Auth's email/password provider. */
+  passwords: Record<string, string>;
 };
 
 /** Bump when the shape or volume of the sample data changes; old browser data is then replaced. */
-export const MOCK_VERSION = 8;
+export const MOCK_VERSION = 9;
 
-/** A Google account that is not on the access list, to show the "not authorised" screen. */
-export const DEMO_UNLISTED: DemoAccount = { email: "visitor@example.com", name: "Visitor", note: "Not on the list" };
+/** The password every demo account shares. DEMO ONLY — shown on the sign-in screen so the password flow can be tried. */
+export const DEMO_PASSWORD = "demo1234";
+
+/** A Google account that is not on the access list, to show the "not authorised" screen (works for password too). */
+export const DEMO_UNLISTED: DemoAccount = { email: "visitor@example.com", name: "Visitor", note: "Not on the list", password: DEMO_PASSWORD };
 
 type Building = { name: string; area: string; address: string; blocks: string[] };
 
@@ -238,9 +243,15 @@ export function buildSeed(): MockDb {
   drops.sort((x, y) => y.drop_date.localeCompare(x.drop_date) || y.created_at.localeCompare(x.created_at));
   const respondedRiya = drops.find((d) => d.advisor_id === "u-adv1" && d.responded);
 
+  // Demo credentials: every seeded account (and the unlisted visitor, to show the password "not authorised" path)
+  // shares DEMO_PASSWORD. This stands in for Firebase Auth; no real passwords live in the demo.
+  const passwords: Record<string, string> = { [DEMO_UNLISTED.email]: DEMO_PASSWORD };
+  for (const p of profiles) passwords[p.email] = DEMO_PASSWORD;
+
   return {
     version: MOCK_VERSION,
     profiles,
+    passwords,
     drops,
     leads: [
       { id: "l-1", advisor_id: "u-adv1", drop_id: respondedRiya?.id ?? null, contact_name: "Mr. Patel", company_name: respondedRiya?.company_name ?? "Shree Traders",
