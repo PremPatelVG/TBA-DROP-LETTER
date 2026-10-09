@@ -1,14 +1,21 @@
 import { buildingKey, matchesDropSearch, matchesPlace, matchesResponse } from "@/lib/search";
 import { lastMonths, totals } from "@/lib/stats";
 import { passwordError } from "@/lib/validate";
+import { buildWelcomeEmail, DEFAULT_MAIL_FROM } from "@/lib/email";
 import { buildSeed, DEMO_PASSWORD, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
 import { accessFor, canResetPassword, passwordSignIn } from "./authz";
-import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile } from "./types";
+import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile, type WelcomeEmailPreview, type WelcomeEmailResult } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
 const DB_KEY = "tba.mock.db.v10";
 const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7", "tba.mock.db.v8", "tba.mock.db.v9"];
 const SESSION_KEY = "tba.mock.session.email";
+
+/**
+ * A clearly-sample app download link used only in the demo preview of the welcome email. The real app reads the
+ * link from the ADVISOR_APK_URL env var (see `email.server.ts`); the demo sends nothing.
+ */
+const DEMO_APK_URL = "https://app.tbaindia.in/tba-advisor.apk";
 
 let memory: MockDb | null = null;
 let memorySession: string | null = null;
@@ -175,7 +182,15 @@ export const mockApi: DataApi = {
     db.profiles.push(p);
     db.passwords[email] = input.password; // demo: the account can now sign in with email + password
     save();
-    return wait(p);
+    // Simulate the welcome email (nothing is really sent in the demo) and return it so the admin can preview
+    // exactly what the advisor receives: their login, their password, and the app download link.
+    const preview: WelcomeEmailPreview = {
+      from: DEFAULT_MAIL_FROM,
+      to: email,
+      ...buildWelcomeEmail({ name: p.full_name, advisorId: code, email, password: input.password, apkUrl: DEMO_APK_URL }),
+    };
+    const welcomeEmail: WelcomeEmailResult = { status: "preview", preview };
+    return wait({ profile: p, welcomeEmail });
   },
   async listOpsUsers() {
     requireMaster();

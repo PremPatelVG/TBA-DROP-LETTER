@@ -213,6 +213,28 @@ To remove someone, click **Deactivate** next to them: they lose access at once a
 - **iPhone** (there is no iPhone app): open the app's address in Safari, sign in with Google, then the Share
   button > **Add to Home Screen**.
 
+### Email (SMTP) setup
+When you add an advisor (step 10), the app can email them their login and a link to download the Android app,
+sent **from `indiaops@tbaindia.in`**. This is optional: if it is not set up, advisors are still created and you
+simply share their login and the app link yourself (you will see a short note when the email is skipped).
+
+To turn it on, set these on the server — Firebase App Hosting: `apphosting.yaml` (commented placeholders are there),
+with the **password in Cloud Secret Manager**, not in the file; other hosts: environment variables. Nothing here is
+ever committed to the repo (see `.env.example`):
+- `SMTP_HOST` — your mail provider's SMTP server for `indiaops@tbaindia.in` (for example `smtp.zoho.in`).
+- `SMTP_PORT` — `587` (STARTTLS, the default) or `465` (implicit TLS, with `SMTP_SECURE=true`).
+- `SMTP_SECURE` — `true` only for port 465; otherwise leave it off.
+- `SMTP_USER` / `SMTP_PASS` — the mailbox login (usually `indiaops@tbaindia.in`) and its password or app-password.
+- `MAIL_FROM` — the From address (defaults to `indiaops@tbaindia.in`).
+- `ADVISOR_APK_URL` — where you host the built app (see [Android app for advisors](#android-app-for-advisors));
+  the email links here so the advisor installs it on their phone, for example `https://app.tbaindia.in/tba-advisor.apk`.
+
+The welcome email fires on advisor creation. It contains the advisor's **username** (their email), the **initial
+password** you set, their **Advisor ID**, and the **download link** (an "open on your phone to install" link, not a
+raw `.apk` attachment — mail providers block those). Nothing about the password is written to Firestore or the logs.
+If sending fails, or SMTP is not configured, the advisor is still created and the admin sees a short, non-blocking
+note. You can preview exactly what the advisor receives in the demo: add an advisor and the welcome email opens.
+
 ### Later: publishing a new version
 Run `npx firebase deploy` again in the project folder (`npx firebase deploy --only apphosting` if only the app
 changed). The data is not touched. The Android app shows the new version by itself (it opens the live site), so it
@@ -347,7 +369,11 @@ data, or Google Play updates it.
   disabled and its sessions revoked. Otherwise it stores the custom claims `{ role, pid }` (pid = the `users`
   document ID) and the Auth uid on the entry.
 - When an admin adds a user, `createAdvisor`/`createOpsUser` also provision that person's Firebase Auth user with
-  the initial password (`admin.auth().createUser`, email marked verified because it is the access-list email).
+  the initial password (`admin.auth().createUser`, email marked verified because it is the access-list email). After
+  an **advisor** is added, `createAdvisor` also emails them their login and the app download link (SMTP via
+  nodemailer, built in `src/lib/email.ts` and sent in `src/lib/email.server.ts`); this is best-effort and never
+  blocks or undoes the advisor — see [Email (SMTP) setup](#email-smtp-setup). The password the email carries is
+  never written to Firestore or the logs.
   `resetUserPassword` sets a new password (`admin.auth().updateUser`) for a user the caller manages — the master
   for any operations account or advisor, an operations manager only for advisors in its own region (enforced by
   `canResetPassword` in `src/lib/data/authz.ts`). People can also reset their own password by email

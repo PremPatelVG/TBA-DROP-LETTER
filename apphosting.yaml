@@ -34,3 +34,31 @@ env:
   # - variable: ANDROID_CERT_SHA256
   #   value: "AB:CD:EF:...:12"
   #   availability: [RUNTIME]
+
+  # Advisor welcome email (README, "Email (SMTP) setup"). When an advisor is added they are emailed their login and
+  # the app download link, from indiaops@tbaindia.in. Optional: if unset, advisors are still created and the email is
+  # skipped. Remove the # signs and fill in your mail provider's SMTP settings to turn it on.
+  # - variable: SMTP_HOST
+  #   value: smtp.your-provider.example
+  #   availability: [RUNTIME]
+  # - variable: SMTP_PORT
+  #   value: "587"            # 587 = STARTTLS (SMTP_SECURE off); 465 = implicit TLS (SMTP_SECURE "true")
+  #   availability: [RUNTIME]
+  # - variable: SMTP_SECURE
+  #   value: "false"
+  #   availability: [RUNTIME]
+  # - variable: SMTP_USER
+  #   value: indiaops@tbaindia.in
+  #   availability: [RUNTIME]
+  # The SMTP password is a SECRET: store it in Cloud Secret Manager and reference it by name here. Do NOT put the
+  # password in this file. See https://firebase.google.com/docs/app-hosting/configure#secret-parameters
+  # - variable: SMTP_PASS
+  #   secret: SMTP_PASS
+  #   availability: [RUNTIME]
+  # - variable: MAIL_FROM
+  #   value: indiaops@tbaindia.in
+  #   availability: [RUNTIME]
+  # Where you host the built APK (see README, "Android app for advisors"); the welcome email links here.
+  # - variable: ADVISOR_APK_URL
+  #   value: https://app.tbaindia.in/tba-advisor.apk
+  #   availability: [RUNTIME]

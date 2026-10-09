@@ -133,6 +133,25 @@ export type Lead = LeadInput & { id: string; advisor_id: string; created_at: str
 export type NewOpsUser = { full_name: string; email: string; scope_type: OpsScopeType; scope_value: string; password: string };
 export type NewAdvisor = { full_name: string; advisor_code: string; email: string; city: string; state: string; zip: string | null; password: string };
 
+/** The rendered welcome email shown as a preview in the demo (envelope + subject + body). */
+export type WelcomeEmailPreview = { from: string; to: string; subject: string; text: string; html: string };
+
+/**
+ * What happened with the new advisor's welcome email. Advisor creation succeeds in every case; the email is only
+ * ever a best effort on top.
+ * - demo: `preview` — the email is simulated (nothing is really sent) and returned so the admin can see it.
+ * - Firebase: `sent` — delivered to the advisor; `skipped` — SMTP or the app link is not configured yet;
+ *   `failed` — sending was attempted but threw. `reason` is a short, non-sensitive message (never a credential).
+ */
+export type WelcomeEmailResult =
+  | { status: "preview"; preview: WelcomeEmailPreview }
+  | { status: "sent" }
+  | { status: "skipped"; reason: string }
+  | { status: "failed"; reason: string };
+
+/** Result of creating an advisor: the new access-list profile plus the welcome-email outcome. */
+export type AdvisorCreated = { profile: Profile; welcomeEmail: WelcomeEmailResult };
+
 /** Outcome of signing in. Only people on the access list who are active get `ok`. */
 export type AccessResult =
   | { status: "ok"; profile: Profile }
@@ -172,7 +191,12 @@ export interface DataApi {
   subscribeSyncErrors(onError: (message: string) => void): () => void;
 
   listAdvisors(): Promise<Profile[]>;
-  createAdvisor(input: NewAdvisor): Promise<Profile>;
+  /**
+   * Add an advisor to the access list and send them a welcome email with their login and the app download link.
+   * The email never blocks creation: the returned {@link AdvisorCreated.welcomeEmail} says what happened with it
+   * (and, in the demo, carries a preview to show).
+   */
+  createAdvisor(input: NewAdvisor): Promise<AdvisorCreated>;
   /** Master only. */
   listOpsUsers(): Promise<Profile[]>;
   createOpsUser(input: NewOpsUser): Promise<Profile>;

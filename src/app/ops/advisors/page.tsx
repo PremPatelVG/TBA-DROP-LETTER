@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
 import { api } from "@/lib/data";
-import { btnCls, cardCls, errMsg, Field, inputCls, Notice, useData, useUser } from "@/components/ui";
+import { btn2Cls, btnCls, cardCls, errMsg, Field, inputCls, Notice, useData, useUser } from "@/components/ui";
 import { ResetPasswordDialog, type ResetTarget } from "@/components/reset-password-dialog";
+import { WelcomeEmailPreviewDialog } from "@/components/welcome-email-preview";
 import { isEmail, passwordError } from "@/lib/validate";
+import type { WelcomeEmailPreview } from "@/lib/data";
 
 export default function Advisors() {
   const user = useUser();
@@ -15,9 +17,12 @@ export default function Advisors() {
     const advisors = await api.listAdvisors();
     return { advisors };
   });
-  const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "error" | "info"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
   const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
+  // The last advisor's welcome email, kept so the admin can (re)open its preview. Demo only; see createAdvisor.
+  const [emailPreview, setEmailPreview] = useState<WelcomeEmailPreview | null>(null);
+  const [showEmail, setShowEmail] = useState(false);
 
   async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -38,9 +43,20 @@ export default function Advisors() {
     setPending(true);
     setMsg(null);
     try {
-      await api.createAdvisor({ full_name: s("full_name"), advisor_code: code, city, state, zip: s("zip") || null, email, password: pw });
+      const { welcomeEmail } = await api.createAdvisor({ full_name: s("full_name"), advisor_code: code, city, state, zip: s("zip") || null, email, password: pw });
       form.reset();
-      setMsg({ kind: "ok", text: `Advisor ${code} added. They can now sign in as ${email} with the password you set, or with Google.` });
+      const base = `Advisor ${code} added. They can now sign in as ${email} with the password you set, or with Google.`;
+      if (welcomeEmail.status === "preview") {
+        // Demo: nothing is actually sent — show the admin exactly what the advisor would receive.
+        setEmailPreview(welcomeEmail.preview);
+        setShowEmail(true);
+        setMsg({ kind: "ok", text: `${base} A welcome email with their login and the app download link was prepared — open the preview to see it.` });
+      } else if (welcomeEmail.status === "sent") {
+        setMsg({ kind: "ok", text: `${base} A welcome email with their login and the app download link was sent to ${email}.` });
+      } else {
+        // skipped (not configured yet) or failed: the advisor is created regardless — a soft, non-fatal warning.
+        setMsg({ kind: "info", text: `${base} The welcome email could not be sent (${welcomeEmail.reason}) — share their login and the app download link with them directly.` });
+      }
       reload();
     } catch (err) {
       setMsg({ kind: "error", text: errMsg(err) });
@@ -110,11 +126,15 @@ export default function Advisors() {
           <Field name="email" label="Email" type="email" autoComplete="off" placeholder="name@gmail.com" />
           <Field name="password" label="Initial password" type="password" autoComplete="new-password" placeholder="At least 8 characters" />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+          {emailPreview && (
+            <button type="button" onClick={() => setShowEmail(true)} className={`${btn2Cls} w-full`}>View welcome email</button>
+          )}
           <button disabled={pending} className={`${btnCls} w-full`}>{pending ? "Adding..." : "Add advisor"}</button>
         </form>
       </section>
       <ResetPasswordDialog target={resetTarget} onClose={() => setResetTarget(null)}
         onDone={(text) => { setResetTarget(null); setMsg({ kind: "ok", text }); reload(); }} />
+      <WelcomeEmailPreviewDialog email={showEmail ? emailPreview : null} onClose={() => setShowEmail(false)} />
     </div>
   );
 }

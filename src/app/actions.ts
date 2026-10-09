@@ -11,7 +11,8 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { isEmail, passwordError } from "@/lib/validate";
 import { canResetPassword } from "@/lib/data/authz";
-import type { NewAdvisor, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
+import { sendWelcomeEmail } from "@/lib/email.server";
+import type { AdvisorCreated, NewAdvisor, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export type ClaimResult =
@@ -202,8 +203,12 @@ function optInput(v: unknown, label: string, max: number) {
   return s;
 }
 
-/** Operations or master: add an advisor to the access list. They sign in with `email` (the initial password, or Google). */
-export async function createAdvisor(idToken: string, input: NewAdvisor): Promise<ActionResult<Profile>> {
+/**
+ * Operations or master: add an advisor to the access list. They sign in with `email` (the initial password, or
+ * Google). After the advisor and their sign-in are set up, a welcome email with their login and the app download
+ * link is sent as a best effort — a mail problem never undoes the advisor (see {@link sendWelcomeEmail}).
+ */
+export async function createAdvisor(idToken: string, input: NewAdvisor): Promise<ActionResult<AdvisorCreated>> {
   return run("add the advisor", async () => {
     const me = await caller(idToken, ["operations", "master"]);
     const full_name = text(input.full_name, "Name", 100);
@@ -236,7 +241,11 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
       });
     });
     await linkSignIn(ref, email, pw, full_name);
-    return toProfile(await ref.get());
+    const profile = toProfile(await ref.get());
+    // The advisor now exists and can sign in. Email their login + app link as a best effort: sendWelcomeEmail
+    // never throws, so a mail problem is reported back (surfaced as a soft warning) without undoing the advisor.
+    const welcomeEmail = await sendWelcomeEmail({ name: full_name, advisorId: advisor_code, email, password: pw });
+    return { profile, welcomeEmail };
   });
 }
 
