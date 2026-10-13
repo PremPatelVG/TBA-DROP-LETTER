@@ -1,9 +1,9 @@
 "use client";
-import { type Belt, BELTS, beltFor, nextBelt } from "@/lib/belts";
+import { type Belt, type BeltThresholds, type BeltTier, BELT_TIERS, classify, nextBelt } from "@/lib/belts";
 import type { LeaderboardRow } from "@/lib/data";
 
 /** Coloured belt badge. The belt name is always shown as text, so colour is never the only signal. */
-export function BeltChip({ belt, size = "sm" }: { belt: Belt; size?: "sm" | "lg" }) {
+export function BeltChip({ belt, size = "sm" }: { belt: BeltTier; size?: "sm" | "lg" }) {
   const pad = size === "lg" ? "px-3 py-1 text-sm" : "px-2 py-0.5 text-xs";
   return (
     <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-medium ${pad} ${belt.chip}`}>
@@ -15,19 +15,19 @@ export function BeltChip({ belt, size = "sm" }: { belt: Belt; size?: "sm" | "lg"
 
 const byEntries = (a: LeaderboardRow, b: LeaderboardRow) => b.weekEntries - a.weekEntries || a.full_name.localeCompare(b.full_name);
 
-/** How many advisors sit in each belt, highest belt first. */
-function distribution(rows: LeaderboardRow[]) {
-  return [...BELTS].reverse().map((belt) => ({ belt, count: rows.filter((r) => beltFor(r.weekEntries).key === belt.key).length }));
+/** How many advisors sit in each belt, highest belt first (using the stored thresholds). */
+function distribution(rows: LeaderboardRow[], thresholds: BeltThresholds) {
+  return [...BELT_TIERS].reverse().map((tier) => ({ tier, count: rows.filter((r) => classify(r.weekEntries, thresholds).key === tier.key).length }));
 }
 
 /** Ranked list of advisors by entries this week, each with a belt badge. `meId` highlights one row. */
-function LeaderboardList({ rows, meId }: { rows: LeaderboardRow[]; meId?: string }) {
+function LeaderboardList({ rows, thresholds, meId }: { rows: LeaderboardRow[]; thresholds: BeltThresholds; meId?: string }) {
   const ranked = [...rows].sort(byEntries);
   if (!ranked.length) return <p className="rounded-lg border border-dashed bg-white p-8 text-center text-slate-500">No advisors yet.</p>;
   return (
     <ol className="divide-y overflow-hidden rounded-lg border bg-white">
       {ranked.map((r, i) => {
-        const belt = beltFor(r.weekEntries);
+        const belt: Belt = classify(r.weekEntries, thresholds);
         const me = r.advisorId === meId;
         return (
           <li key={r.advisorId} className={`flex items-center gap-3 p-3 ${me ? "border-l-4 border-green-600 bg-green-50" : ""}`}>
@@ -53,13 +53,13 @@ function LeaderboardList({ rows, meId }: { rows: LeaderboardRow[]; meId?: string
 }
 
 /** Small row of "N at Red belt" chips summarising the field. */
-function BeltLegend({ rows }: { rows: LeaderboardRow[] }) {
+function BeltLegend({ rows, thresholds }: { rows: LeaderboardRow[]; thresholds: BeltThresholds }) {
   return (
     <div className="mb-4 flex flex-wrap gap-2">
-      {distribution(rows).map(({ belt, count }) => (
-        <span key={belt.key} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${belt.chip}`}>
-          <span className={`h-2 w-2 shrink-0 rounded-full ${belt.dot}`} aria-hidden />
-          {count} · {belt.name}
+      {distribution(rows, thresholds).map(({ tier, count }) => (
+        <span key={tier.key} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${tier.chip}`}>
+          <span className={`h-2 w-2 shrink-0 rounded-full ${tier.dot}`} aria-hidden />
+          {count} · {tier.name}
         </span>
       ))}
     </div>
@@ -69,13 +69,13 @@ function BeltLegend({ rows }: { rows: LeaderboardRow[] }) {
 const WEEK_NOTE = "Belts are set by entries this week (the competition week runs Monday 09:00 to Monday 09:00, IST, and standings refresh every Monday morning). One drop entry is one letter.";
 
 /** Ops/master view: every advisor ranked by entries this week, with a belt-distribution summary. */
-export function OpsBeltLeaderboard({ rows }: { rows: LeaderboardRow[] }) {
+export function OpsBeltLeaderboard({ rows, thresholds }: { rows: LeaderboardRow[]; thresholds: BeltThresholds }) {
   return (
     <section>
       <h2 className="mb-1 text-lg font-semibold">Belt leaderboard</h2>
       <p className="mb-3 text-sm text-slate-600">{WEEK_NOTE}</p>
-      <BeltLegend rows={rows} />
-      <LeaderboardList rows={rows} />
+      <BeltLegend rows={rows} thresholds={thresholds} />
+      <LeaderboardList rows={rows} thresholds={thresholds} />
     </section>
   );
 }
@@ -85,9 +85,9 @@ export function OpsBeltLeaderboard({ rows }: { rows: LeaderboardRow[] }) {
  * loads), then the ranked board with their row marked. The board list is shown only when `rows` is
  * available — in the real app an advisor may not be allowed to read every advisor's counts.
  */
-export function AdvisorBeltPanel({ myEntries, rows, meId }: { myEntries: number; rows: LeaderboardRow[]; meId: string }) {
-  const belt = beltFor(myEntries);
-  const next = nextBelt(myEntries);
+export function AdvisorBeltPanel({ myEntries, rows, meId, thresholds }: { myEntries: number; rows: LeaderboardRow[]; meId: string; thresholds: BeltThresholds }) {
+  const belt = classify(myEntries, thresholds);
+  const next = nextBelt(myEntries, thresholds);
   const ranked = [...rows].sort(byEntries);
   const rank = ranked.findIndex((r) => r.advisorId === meId) + 1;
   return (
@@ -114,7 +114,7 @@ export function AdvisorBeltPanel({ myEntries, rows, meId }: { myEntries: number;
         <>
           <h2 className="mb-1 text-lg font-semibold">Belt leaderboard</h2>
           <p className="mb-3 text-sm text-slate-600">{WEEK_NOTE}</p>
-          <LeaderboardList rows={rows} meId={meId} />
+          <LeaderboardList rows={rows} thresholds={thresholds} meId={meId} />
         </>
       )}
     </section>

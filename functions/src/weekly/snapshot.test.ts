@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { deleteApp, initializeApp, type App } from "firebase-admin/app";
 import { getFirestore, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { addDays } from "./week";
-import { beltFor, runWeeklySnapshot } from "./snapshot";
+import { beltFor, DEFAULT_BELT_THRESHOLDS, readBeltThresholds, runWeeklySnapshot } from "./snapshot";
 
 const EMULATOR = process.env.FIRESTORE_EMULATOR_HOST;
 const PROJECT = process.env.GCLOUD_PROJECT || "demo-tba";
@@ -64,14 +64,15 @@ after(async () => {
   if (app) await deleteApp(app);
 });
 
-test("belt thresholds match src/lib/belts.ts", { skip }, () => {
-  assert.equal(beltFor(0), "red");
-  assert.equal(beltFor(199), "red");
-  assert.equal(beltFor(200), "yellow");
-  assert.equal(beltFor(349), "yellow");
-  assert.equal(beltFor(350), "blue");
-  assert.equal(beltFor(500), "blue");
-  assert.equal(beltFor(501), "green");
+test("default belt thresholds match src/lib/belts.ts", { skip }, () => {
+  const t = DEFAULT_BELT_THRESHOLDS;
+  assert.equal(beltFor(0, t), "red");
+  assert.equal(beltFor(199, t), "red");
+  assert.equal(beltFor(200, t), "yellow");
+  assert.equal(beltFor(349, t), "yellow");
+  assert.equal(beltFor(350, t), "blue");
+  assert.equal(beltFor(500, t), "blue");
+  assert.equal(beltFor(501, t), "green");
 });
 
 test("snapshots the ended week's belt standing for every active advisor", { skip }, async () => {
@@ -99,4 +100,17 @@ test("running again for the same week changes nothing", { skip }, async () => {
   assert.equal(s.written, 0);
   const again = (await db.doc("weekly_results/a_2026-09-21").get()).updateTime!.toMillis();
   assert.equal(again, at, "the record was not rewritten");
+});
+
+// Runs last: it writes settings/belts, so it must not precede the default-threshold snapshot tests above.
+test("reads the master-editable thresholds from settings/belts, else the defaults", { skip }, async () => {
+  assert.deepEqual(await readBeltThresholds(db), DEFAULT_BELT_THRESHOLDS, "no settings doc yet → defaults");
+  const custom = { yellowMin: 100, blueMin: 300, greenMin: 600 };
+  await db.doc("settings/belts").set(custom);
+  assert.deepEqual(await readBeltThresholds(db), custom, "the stored thresholds are read back");
+  // With the moved boundaries, 520 entries is Blue (>=300, <600) rather than Green.
+  assert.equal(beltFor(99, custom), "red");
+  assert.equal(beltFor(100, custom), "yellow");
+  assert.equal(beltFor(520, custom), "blue");
+  assert.equal(beltFor(600, custom), "green");
 });

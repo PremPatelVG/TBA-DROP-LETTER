@@ -32,9 +32,10 @@ const as = {
   adv1: () => env.authenticatedContext("uid-adv1", { role: "advisor", pid: "adv1", city: "Rajkot", state: "Gujarat" }).firestore(),
   adv2: () => env.authenticatedContext("uid-adv2", { role: "advisor", pid: "adv2", city: "Ahmedabad", state: "Gujarat" }).firestore(),
   adv3: () => env.authenticatedContext("uid-adv3", { role: "advisor", pid: "adv3", city: "Mumbai", state: "Maharashtra" }).firestore(),
-  // A city-scoped operations account (Rajkot) and a state-scoped one (the whole state of Gujarat).
+  // Regional accounts spanning the three tiers: a national account, a state (Gujarat) and a city (Rajkot).
   ops: () => env.authenticatedContext("uid-ops", { role: "operations", pid: "ops", scope_type: "city", scope_value: "Rajkot" }).firestore(),
   opsState: () => env.authenticatedContext("uid-ops-state", { role: "operations", pid: "ops-state", scope_type: "state", scope_value: "Gujarat" }).firestore(),
+  opsNational: () => env.authenticatedContext("uid-ops-nat", { role: "operations", pid: "ops-nat", scope_type: "national" }).firestore(),
   master: () => env.authenticatedContext("uid-master", { role: "master", pid: "master" }).firestore(),
   deactivated: () => env.authenticatedContext("uid-gone", { role: "advisor", pid: "gone", city: "Rajkot", state: "Gujarat" }).firestore(),
   // Claims naming someone else's entry, or a role the entry does not have.
@@ -58,6 +59,7 @@ beforeEach(async () => {
       setDoc(doc(db, "users/master"), person("master", "uid-master")),
       setDoc(doc(db, "users/ops"), person("operations", "uid-ops", { scope_type: "city", scope_value: "Rajkot" })),
       setDoc(doc(db, "users/ops-state"), person("operations", "uid-ops-state", { scope_type: "state", scope_value: "Gujarat" })),
+      setDoc(doc(db, "users/ops-nat"), person("operations", "uid-ops-nat", { scope_type: "national", scope_value: null })),
       setDoc(doc(db, "users/adv1"), person("advisor", "uid-adv1", { advisor_code: "ADV001", city: "Rajkot", state: "Gujarat" })),
       setDoc(doc(db, "users/adv2"), person("advisor", "uid-adv2", { advisor_code: "ADV002", city: "Ahmedabad", state: "Gujarat" })),
       setDoc(doc(db, "users/adv3"), person("advisor", "uid-adv3", { advisor_code: "ADV003", city: "Mumbai", state: "Maharashtra" })),
@@ -74,6 +76,8 @@ beforeEach(async () => {
       setDoc(doc(db, "buildings/adv3__bkc"), { advisor_id: "adv3", key: "bkc", name: "Bandra Kurla One", region_city: "Mumbai", region_state: "Maharashtra" }),
       // weekly_results is keyed by advisor and the week's Monday ("<advisor>_<monday>").
       setDoc(doc(db, "weekly_results/adv1_2026-09-21"), { advisor_id: "adv1", letters: 210, belt: "yellow" }),
+      // The stored belt thresholds (master-editable).
+      setDoc(doc(db, "settings/belts"), { yellowMin: 200, blueMin: 350, greenMin: 501 }),
     ]);
   });
 });
@@ -271,6 +275,60 @@ describe("franchise region isolation", () => {
     await assertSucceeds(setDoc(doc(as.adv2(), "drops/own"), drop("adv2", { region_city: "Ahmedabad", region_state: "Gujarat" })), "their own region");
     await assertFails(setDoc(doc(as.adv2(), "drops/elsewhere"), drop("adv2", { region_city: "Rajkot", region_state: "Gujarat" })), "another city");
     await assertFails(setDoc(doc(as.adv3(), "drops/elsewhere"), drop("adv3", { region_city: "Mumbai", region_state: "Gujarat" })), "the wrong state for this advisor");
+  });
+});
+
+describe("the national tier (TBA India Ops) sees every region", () => {
+  test("a national account reads every advisor, drop and building, with unscoped queries", async () => {
+    const db = as.opsNational();
+    await assertSucceeds(getDocs(query(collection(db, "users"), where("role", "==", "advisor"))), "every advisor, unscoped");
+    for (const id of ["adv1", "adv2", "adv3"]) await assertSucceeds(getDoc(doc(db, `users/${id}`)));
+    await assertSucceeds(getDocs(query(collection(db, "drops"), orderBy("drop_date", "desc"))), "every drop, unscoped");
+    for (const id of ["d1", "d2", "d3"]) await assertSucceeds(getDoc(doc(db, `drops/${id}`)));
+    await assertSucceeds(getCountFromServer(query(collection(db, "drops"), where("responded", "==", true))));
+    await assertSucceeds(getDocs(collection(db, "buildings")), "every building, unscoped");
+    for (const id of ["adv1__shivalik-shilp", "adv2__mondeal", "adv3__bkc"]) await assertSucceeds(getDoc(doc(db, `buildings/${id}`)));
+  });
+  test("a national account is NOT master: no other regional accounts, no access-list writes", async () => {
+    const db = as.opsNational();
+    await assertSucceeds(getDoc(doc(db, "users/ops-nat")), "its own entry");
+    await assertFails(getDoc(doc(db, "users/master")), "not the master's entry");
+    await assertFails(getDoc(doc(db, "users/ops")), "nor another regional account");
+    await assertFails(getDocs(query(collection(db, "users"), where("role", "==", "operations"))), "cannot list regional accounts");
+    await assertFails(setDoc(doc(db, "users/new-ops"), person("operations", "uid-x")), "the access list is server-only");
+  });
+  test("a national account still cannot write drops or leads", async () => {
+    const db = as.opsNational();
+    await assertFails(setDoc(doc(db, "drops/new"), drop("adv1")));
+    await assertFails(setDoc(doc(db, "direct_leads/new"), lead("adv1")));
+  });
+});
+
+describe("belt thresholds (settings/belts): every listed user reads, only master writes a valid set", () => {
+  const belts = { yellowMin: 200, blueMin: 350, greenMin: 501 };
+  test("every listed role reads the thresholds; outsiders cannot", async () => {
+    for (const who of ["adv1", "ops", "opsState", "opsNational", "master"]) {
+      await assertSucceeds(getDoc(doc(as[who](), "settings/belts")), `${who} reads`);
+    }
+    for (const who of ["anon", "unlisted", "deactivated"]) {
+      await assertFails(getDoc(doc(as[who](), "settings/belts")), `${who} cannot read`);
+    }
+  });
+  test("only master writes the thresholds", async () => {
+    await assertSucceeds(setDoc(doc(as.master(), "settings/belts"), { yellowMin: 250, blueMin: 400, greenMin: 600 }));
+    await assertFails(setDoc(doc(as.opsNational(), "settings/belts"), belts), "national sees all but cannot edit thresholds");
+    await assertFails(setDoc(doc(as.ops(), "settings/belts"), belts), "a city president cannot");
+    await assertFails(setDoc(doc(as.opsState(), "settings/belts"), belts), "a state president cannot");
+    await assertFails(setDoc(doc(as.adv1(), "settings/belts"), belts), "an advisor cannot");
+  });
+  test("master's write must be positive integers, strictly increasing, with no extra or missing keys", async () => {
+    const m = () => as.master();
+    await assertFails(setDoc(doc(m(), "settings/belts"), { yellowMin: 0, blueMin: 350, greenMin: 501 }), "must be > 0");
+    await assertFails(setDoc(doc(m(), "settings/belts"), { yellowMin: 200.5, blueMin: 350, greenMin: 501 }), "must be an integer");
+    await assertFails(setDoc(doc(m(), "settings/belts"), { yellowMin: 400, blueMin: 350, greenMin: 501 }), "yellow must be below blue");
+    await assertFails(setDoc(doc(m(), "settings/belts"), { yellowMin: 200, blueMin: 350, greenMin: 350 }), "blue must be below green");
+    await assertFails(setDoc(doc(m(), "settings/belts"), { yellowMin: 200, blueMin: 350, greenMin: 501, extra: 1 }), "no extra keys");
+    await assertFails(setDoc(doc(m(), "settings/belts"), { yellowMin: 200, blueMin: 350 }), "no missing keys");
   });
 });
 

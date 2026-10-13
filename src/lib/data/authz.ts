@@ -36,23 +36,56 @@ export function passwordSignIn(
   return { ok: accessFor(profiles, email) };
 }
 
+type Actor = Pick<Profile, "role" | "scope_type" | "scope_value">;
+type Region = { city: string | null; state: string | null };
+
 /**
- * Whether `actor` may reset `target`'s password. The master can reset any operations account or advisor; an
- * operations account can reset ONLY advisors inside its own franchise region (its city, or every city in its
- * state). An operations account can never reset another operations account or the master, nor an advisor outside
- * its region. Advisors cannot reset anyone. The server action and the mock both gate on this before changing a
- * password; the Firestore security rules are unaffected (the auth method does not change roles or regions).
+ * Whether a regional (operations) `actor` covers `region`. national ⇒ every region; state ⇒ the whole state;
+ * city ⇒ that one city. An account with no usable scope covers nothing (fail closed). This is the shared basis
+ * for which advisors a regional account may see, create and manage, mirrored by scopeWhere()/inScope() in the
+ * data layer and inScope() in firestore.rules.
  */
-export function canResetPassword(
-  actor: Pick<Profile, "role" | "scope_type" | "scope_value">,
-  target: Pick<Profile, "role" | "city" | "state">,
-): boolean {
+export function inOpsScope(actor: Actor, region: Region): boolean {
+  if (actor.scope_type === "national") return true;
+  if (actor.scope_type === "state" && actor.scope_value) return region.state === actor.scope_value;
+  if (actor.scope_type === "city" && actor.scope_value) return region.city === actor.scope_value;
+  return false;
+}
+
+/**
+ * Whether `actor` may reset `target`'s password. The master can reset any regional account or advisor; a regional
+ * account can reset ONLY advisors inside its own scope (national: any advisor; state: advisors in its state;
+ * city: advisors in its city). A regional account can never reset another regional account or the master.
+ * Advisors cannot reset anyone. The server action and the mock both gate on this before changing a password; the
+ * Firestore security rules are unaffected (the auth method does not change roles or regions).
+ */
+export function canResetPassword(actor: Actor, target: Pick<Profile, "role" | "city" | "state">): boolean {
   if (actor.role === "master") return target.role === "advisor" || target.role === "operations";
   if (actor.role === "operations") {
     if (target.role !== "advisor") return false;
-    if (actor.scope_type === "city" && actor.scope_value) return target.city === actor.scope_value;
-    if (actor.scope_type === "state" && actor.scope_value) return target.state === actor.scope_value;
-    return false; // an operations account with no scope manages no one (fail closed)
+    return inOpsScope(actor, { city: target.city, state: target.state });
   }
   return false;
+}
+
+/**
+ * Who may create an advisor, and where. The master may create an advisor in any region; a regional account may
+ * create advisors only within its own scope (national: anywhere). Advisors cannot create anyone. The single
+ * source of truth for both the UI and the server; a regional account's scope dimension is also forced on the
+ * server so an advisor is always filed inside what the account can see.
+ */
+export function canCreateAdvisor(actor: Actor, region: Region): boolean {
+  if (actor.role === "master") return true;
+  if (actor.role === "operations") return inOpsScope(actor, region);
+  return false;
+}
+
+/** Only the master may create, edit or deactivate the regional (operations) accounts. */
+export function canManageRegionalAccounts(actor: Pick<Profile, "role">): boolean {
+  return actor.role === "master";
+}
+
+/** Only the master may view or edit the belt thresholds. */
+export function canEditBeltThresholds(actor: Pick<Profile, "role">): boolean {
+  return actor.role === "master";
 }

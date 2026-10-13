@@ -18,16 +18,16 @@ export default function AdvisorHome() {
   const user = useUser();
   const week = currentWeek();
   const { data } = useData(async () => {
-    const summary = await api.advisorSummary(user.id, week);
+    const [summary, thresholds] = await Promise.all([api.advisorSummary(user.id, week), api.getBeltThresholds()]);
     // The leaderboard needs every advisor's weekly count. An advisor may not be allowed to read that in the
     // real app, so if it is refused we still show their own belt (from their own summary) and skip the list.
     let board: LeaderboardRow[] = [];
     try { board = await api.beltLeaderboard(week); } catch { /* not permitted: own belt only */ }
-    return { summary, board };
+    return { summary, board, thresholds };
   });
   const drops = useDropPages(NO_FILTER, PAGE);
   if (!data) return <p className="text-slate-500">Loading...</p>;
-  const { summary: s, board } = data;
+  const { summary: s, board, thresholds } = data;
 
   return (
     <>
@@ -38,7 +38,7 @@ export default function AdvisorHome() {
       ) : (
         <div className="mb-6"><Notice kind="info">Totals and weekly progress need an internet connection. Your drops below still work offline.</Notice></div>
       )}
-      {s && <AdvisorBeltPanel myEntries={s.weekLetters} rows={board} meId={user.id} />}
+      {s && <AdvisorBeltPanel myEntries={s.weekLetters} rows={board} meId={user.id} thresholds={thresholds} />}
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">My drops</h2>

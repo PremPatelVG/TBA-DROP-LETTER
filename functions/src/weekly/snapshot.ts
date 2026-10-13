@@ -11,22 +11,31 @@ export type SnapshotSummary = {
 };
 
 /**
- * Belt thresholds by entries in the competition week. Fixed constants — must match src/lib/belts.ts
- * (red < 200, yellow 200-349, blue 350-500, green 501+). Belts are the only ranking; there are no levels.
+ * Belt thresholds by entries in the competition week. These are DATA, not constants: the master edits them and
+ * they are stored in Firestore `settings/belts` (see firestore.rules and src/lib/belts.ts). The snapshot reads
+ * them with {@link readBeltThresholds} and classifies with {@link beltFor}, so a moved boundary takes effect here
+ * too. {@link DEFAULT_BELT_THRESHOLDS} (red < 200, yellow 200-349, blue 350-500, green 501+) is used only when no
+ * settings document exists yet, matching src/lib/belts.ts. Belts are the only ranking; there are no levels.
  */
 export type BeltKey = "red" | "yellow" | "blue" | "green";
-const BELTS: { key: BeltKey; min: number }[] = [
-  { key: "red", min: 0 },
-  { key: "yellow", min: 200 },
-  { key: "blue", min: 350 },
-  { key: "green", min: 501 },
-];
+export type BeltThresholds = { yellowMin: number; blueMin: number; greenMin: number };
+export const DEFAULT_BELT_THRESHOLDS: BeltThresholds = { yellowMin: 200, blueMin: 350, greenMin: 501 };
 
-/** The belt for a weekly entry count: the highest belt whose minimum is met. */
-export function beltFor(weekEntries: number): BeltKey {
-  let key: BeltKey = BELTS[0].key;
-  for (const b of BELTS) if (weekEntries >= b.min) key = b.key;
-  return key;
+/** The belt for a weekly entry count, given thresholds: the highest belt whose minimum is met. */
+export function beltFor(weekEntries: number, t: BeltThresholds): BeltKey {
+  if (weekEntries >= t.greenMin) return "green";
+  if (weekEntries >= t.blueMin) return "blue";
+  if (weekEntries >= t.yellowMin) return "yellow";
+  return "red";
+}
+
+/** Reads the stored belt thresholds (settings/belts), or the defaults when none are stored yet. */
+export async function readBeltThresholds(db: Firestore): Promise<BeltThresholds> {
+  const d = (await db.collection("settings").doc("belts").get()).data();
+  if (d && typeof d.yellowMin === "number" && typeof d.blueMin === "number" && typeof d.greenMin === "number") {
+    return { yellowMin: d.yellowMin, blueMin: d.blueMin, greenMin: d.greenMin };
+  }
+  return DEFAULT_BELT_THRESHOLDS;
 }
 
 /** Letters (= entries) one advisor dropped in a week. A count query: about one read per 1,000 entries. */
@@ -50,6 +59,8 @@ export async function countLetters(db: Firestore, advisorId: string, week: Week)
  */
 export async function runWeeklySnapshot(db: Firestore, at: Date): Promise<SnapshotSummary> {
   const week = previousWeek(at);
+  // The master-editable thresholds, read once for the whole run (see src/lib/belts.ts / settings/belts).
+  const thresholds = await readBeltThresholds(db);
   const advisors = await db.collection("users").where("role", "==", "advisor").get();
   const summary: SnapshotSummary = { week, advisors: advisors.size, written: 0, skipped: 0 };
 
@@ -60,7 +71,7 @@ export async function runWeeklySnapshot(db: Firestore, at: Date): Promise<Snapsh
       continue;
     }
     const letters = await countLetters(db, advisor.id, week);
-    const belt = beltFor(letters);
+    const belt = beltFor(letters, thresholds);
     const wrote = await db.runTransaction(async (tx) => {
       const ref = db.collection("weekly_results").doc(`${advisor.id}_${week.start}`);
       if ((await tx.get(ref)).exists) return false; // already recorded for this week

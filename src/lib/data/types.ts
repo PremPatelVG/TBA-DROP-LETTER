@@ -1,13 +1,20 @@
-/** master > operations > advisor. Master can do everything operations can, plus manage operations accounts. */
+import type { BeltThresholds } from "@/lib/belts";
+
+/** master > operations (regional accounts) > advisor. Master can do everything operations can, plus manage the
+ * regional accounts and edit the belt thresholds. */
 export type Role = "advisor" | "operations" | "master";
 export const isAdminRole = (r: Role) => r === "operations" || r === "master";
 export type ResponseType = "call" | "email" | "none";
 
 /**
- * A franchise region an operations account is assigned to: either one city (e.g. "Rajkot") or a whole state
- * (e.g. "Gujarat", which covers every city in it). The master picks one when creating the account.
+ * The tier of a regional (operations) account — one role with three scope levels, top to bottom:
+ *   national — "TBA India Ops": every state and city (all drops + advisors nationwide); scope_value is null.
+ *   state    — a State account (e.g. "Gujarat President"): every city in that one state.
+ *   city     — a City account (e.g. "Rajkot President"): that one city only.
+ * The master picks the tier when creating the account. Only the master creates regional accounts; each regional
+ * account creates advisors within its own scope (national: anywhere) and cannot create other regional accounts.
  */
-export type OpsScopeType = "city" | "state";
+export type OpsScopeType = "national" | "state" | "city";
 
 /** A person on the access list. Everyone signs in with `email` — email+password or Google (same identity). */
 export type Profile = {
@@ -25,9 +32,9 @@ export type Profile = {
   state: string | null;
   /** Advisor postal code (optional). */
   zip: string | null;
-  /** Operations accounts only: the kind of region assigned (a single city or a whole state); null otherwise. */
+  /** Operations accounts only: the tier assigned (national, a whole state, or a single city); null otherwise. */
   scope_type: OpsScopeType | null;
-  /** Operations accounts only: the assigned city or state name; null for master (unrestricted) and advisors. */
+  /** State/city operations accounts: the assigned state or city name. Null for national ops, master and advisors. */
   scope_value: string | null;
   active: boolean;
   created_at: string;
@@ -231,4 +238,12 @@ export interface DataApi {
 
   listLeads(): Promise<Lead[]>;
   createLead(input: LeadInput): Promise<Lead>;
+
+  /**
+   * The stored belt thresholds (the three boundaries). Any signed-in user may read them, so every belt
+   * computation uses the same source. Falls back to the defaults if none are stored yet.
+   */
+  getBeltThresholds(): Promise<BeltThresholds>;
+  /** Master only: replace the stored belt thresholds (validated: positive integers, strictly increasing). */
+  setBeltThresholds(thresholds: BeltThresholds): Promise<void>;
 }

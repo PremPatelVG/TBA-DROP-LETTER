@@ -1,14 +1,16 @@
 import { buildingKey, matchesDropSearch, matchesPlace, matchesResponse } from "@/lib/search";
 import { lastMonths, totals } from "@/lib/stats";
 import { passwordError } from "@/lib/validate";
+import { beltThresholdsError, DEFAULT_BELT_THRESHOLDS } from "@/lib/belts";
+import { regionalTitle, scopeLabel } from "@/lib/labels";
 import { buildWelcomeEmail, DEFAULT_MAIL_FROM } from "@/lib/email";
 import { buildSeed, DEMO_PASSWORD, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
-import { accessFor, canResetPassword, passwordSignIn } from "./authz";
+import { accessFor, canCreateAdvisor, canResetPassword, passwordSignIn } from "./authz";
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile, type WelcomeEmailPreview, type WelcomeEmailResult } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
-const DB_KEY = "tba.mock.db.v10";
-const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7", "tba.mock.db.v8", "tba.mock.db.v9"];
+const DB_KEY = "tba.mock.db.v11";
+const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7", "tba.mock.db.v8", "tba.mock.db.v9", "tba.mock.db.v10"];
 const SESSION_KEY = "tba.mock.session.email";
 
 /**
@@ -78,12 +80,13 @@ const visible = <T extends { advisor_id: string }>(rows: T[], advisorId?: string
   return scope ? rows.filter((r) => r.advisor_id === scope) : rows;
 };
 
-/** A scoped operations account's region filter for anything carrying a city and state; master/other: no filter. */
+/** A regional account's scope filter for anything carrying a city and state; master/national: no filter. */
 function inScope<T>(p: Profile, rows: T[], city: (r: T) => string | null, state: (r: T) => string | null): T[] {
   if (p.role !== "operations") return rows; // master sees every region
-  if (p.scope_type === "city" && p.scope_value) return rows.filter((r) => city(r) === p.scope_value);
+  if (p.scope_type === "national") return rows; // national (TBA India Ops) sees every region too
   if (p.scope_type === "state" && p.scope_value) return rows.filter((r) => state(r) === p.scope_value);
-  return []; // an operations account with no scope sees nothing (fail closed)
+  if (p.scope_type === "city" && p.scope_value) return rows.filter((r) => city(r) === p.scope_value);
+  return []; // a regional account with no usable scope sees nothing (fail closed)
 }
 /** Advisors in the signed-in admin's region: a scoped operations account sees its city/state only; master all. */
 const advisorsInScope = (p: Profile, advisors: Profile[]) => inScope(p, advisors, (a) => a.city, (a) => a.state);
@@ -136,8 +139,9 @@ export const mockApi: DataApi = {
   async demoAccounts() {
     const roleNote = (p: Profile) =>
       p.role === "advisor" ? `Advisor ${p.advisor_code} · ${p.city ?? ""}`
-      : p.role === "master" ? "Master · all regions"
-      : `Ops · ${p.scope_type === "state" ? "State" : "City"}: ${p.scope_value ?? "—"}`;
+      : p.role === "master" ? "Master · all regions · edits belt thresholds"
+      : p.scope_type === "national" ? "TBA India Ops · all regions · no threshold editor"
+      : `${regionalTitle(p.scope_type, p.scope_value)} · ${scopeLabel(p.scope_type, p.scope_value)}`;
     const db = load();
     const people = db.profiles.map((p) => ({
       email: p.email,
@@ -168,13 +172,16 @@ export const mockApi: DataApi = {
     let city = input.city.trim();
     let state = input.state.trim();
     const zip = input.zip?.trim() || null;
-    // Operations accounts can only add advisors inside their own region: force the scoped dimension.
+    // A state/city account can only add advisors inside its own region: force the scoped dimension. national adds
+    // advisors anywhere (nothing forced); master too.
     if (actor.role === "operations") {
       if (actor.scope_type === "city" && actor.scope_value) city = actor.scope_value;
       else if (actor.scope_type === "state" && actor.scope_value) state = actor.scope_value;
     }
     if (!city) throw new Error("City is required.");
     if (!state) throw new Error("State is required.");
+    // The shared who-can-create-what rule (used by the server too): a regional account stays within its scope.
+    if (!canCreateAdvisor(actor, { city, state })) throw new Error("You can only add advisors in your own region.");
     const p: Profile = {
       id: uid("u"), role: "advisor", full_name: input.full_name.trim(), email, advisor_code: code,
       city, state, zip, scope_type: null, scope_value: null, active: true, created_at: new Date().toISOString(),
@@ -203,8 +210,12 @@ export const mockApi: DataApi = {
     const pwErr = passwordError(input.password);
     if (pwErr) throw new Error(pwErr);
     if (db.profiles.some((p) => p.email === email)) throw new Error(`${email} is already on the list.`);
-    const scope_value = input.scope_value.trim();
-    if (!scope_value) throw new Error(`${input.scope_type === "state" ? "State" : "City"} is required.`);
+    // national (TBA India Ops) carries no region; state/city need their region named.
+    let scope_value: string | null = null;
+    if (input.scope_type !== "national") {
+      scope_value = input.scope_value.trim();
+      if (!scope_value) throw new Error(`${input.scope_type === "state" ? "State" : "City"} is required.`);
+    }
     const p: Profile = {
       id: uid("u"), role: "operations", full_name: input.full_name.trim(), email, advisor_code: null,
       city: null, state: null, zip: null, scope_type: input.scope_type, scope_value, active: true, created_at: new Date().toISOString(),
@@ -330,6 +341,20 @@ export const mockApi: DataApi = {
     load().leads.push(l);
     save();
     return wait(l);
+  },
+
+  async getBeltThresholds() {
+    me(); // any signed-in user may read the thresholds
+    return wait({ ...(load().beltThresholds ?? DEFAULT_BELT_THRESHOLDS) });
+  },
+  async setBeltThresholds(thresholds) {
+    requireMaster(); // only master may edit the thresholds (imitates the security rules)
+    const err = beltThresholdsError(thresholds);
+    if (err) throw new Error(err);
+    const db = load();
+    db.beltThresholds = { yellowMin: thresholds.yellowMin, blueMin: thresholds.blueMin, greenMin: thresholds.greenMin };
+    save();
+    return wait(undefined);
   },
 };
 

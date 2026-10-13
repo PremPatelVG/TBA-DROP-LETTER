@@ -21,22 +21,28 @@ npm run dev      # http://localhost:3000
 ```
 Demo mode is on by default (`NEXT_PUBLIC_USE_MOCK` unset or `true`). You can sign in with an email and the shared
 demo password (shown on the sign-in screen, `demo1234`), or "Sign in with Google" opens a demo account chooser:
-**Master Admin** (everything operations sees, plus managing operations accounts), **Ops Admin** for the operations
-screens, an advisor (ADV001-ADV003), or **Visitor**, who is not on the access list and is refused.
+**Master Admin** (sees everything, manages the regional accounts and edits the belt thresholds), **TBA India Ops**
+(national — sees everything, but no threshold editor), a **State/City president** (e.g. Gujarat or Rajkot), an
+advisor, or **Visitor**, who is not on the access list and is refused.
 Sample data (3 advisors, about 2,700 letters: a small pilot from April, then a ramp-up over the last two months,
 so this week's progress shows roughly 60-180 letters) is stored in the browser's localStorage; "Reset demo data"
 on the login screen restores it.
 
 ## Roles
-- `advisor`: field staff; mobile app under `/advisor`.
-- `operations`: web admin under `/ops`; adds and deactivates advisors, edits targets.
-- `master`: everything operations can do, plus `/master` to add, deactivate and reactivate operations accounts.
-  Only master can manage operations accounts.
+- `advisor`: field staff; mobile app under `/advisor`; sees only their own entries.
+- `operations` (regional accounts): web admin under `/ops`. One role with three scope tiers, rolling up:
+  - **national** ("TBA India Ops") — every state and city: all drops and advisors nationwide.
+  - **state** (e.g. "Gujarat President") — every city in that one state.
+  - **city** (e.g. "Rajkot President") — that one city only.
+  Each regional account adds advisors within its own scope (national: anywhere) and resets those advisors'
+  passwords. A regional account cannot create other regional accounts and cannot edit the belt thresholds.
+- `master`: everything a regional account can do, plus `/master` to create, deactivate and reactivate the regional
+  accounts, and `/master/belts` to edit the belt thresholds. Only master can do those two things.
 
 Everyone signs in with an email and password or with Google (same email either way). Only people added in advance
-can use the app: master adds operations, operations (or master) add advisors, each with their email and an initial
-password. Anyone else who signs in sees "You don't have access" and is signed out; a deactivated person sees "Your
-access has been turned off".
+can use the app: master adds the regional accounts, each regional account (or master) adds advisors, each with
+their email and an initial password. Anyone else who signs in sees "You don't have access" and is signed out; a
+deactivated person sees "Your access has been turned off".
 
 ## Screens
 Advisor (mobile screens with bottom navigation; the Android app opens them full screen, and they also work in a
@@ -59,11 +65,13 @@ Operations and master (desktop web admin):
   company name and building name, responder phone and email columns, and Excel export of the filtered rows
   (SheetJS, in the browser).
 - `/ops/advisors` add advisors (name, advisor ID, region, Google email), deactivate or reactivate them.
-- `/master` (master only) operations accounts.
+- `/master` (master only) the regional accounts (national / state / city), and `/master/belts` the belt thresholds.
 
 Ranking: advisors are ranked only by the **belt** system, from their entry count in the current competition week —
-Red (fewer than 200), Yellow (200-349), Blue (350-500), Green (501 or more). These thresholds are fixed; there is
-no level system. The leaderboard refreshes every Monday morning when the previous week's standings are recorded.
+by default Red (fewer than 200), Yellow (200-349), Blue (350-500), Green (501 or more). The three boundaries are
+stored as data and the **master** can change them anytime (`/master/belts`); every belt computation, including the
+weekly snapshot, reads the stored values. There is no level system. The leaderboard refreshes every Monday morning
+when the previous week's standings are recorded.
 
 Definitions: one drop entry is one letter, so letters dropped, this week's belt, analytics, the per-advisor
 tables and the export all count entries. Buildings covered = distinct building names. Response rate = responded
@@ -191,18 +199,20 @@ If you later add your own domain, repeat 2-5 with that domain.
 ### 10. Sign in and add people
 1. Open the app's address and sign in with the master account (Google, or the email and password if you set one
    in step 8).
-2. **Master** screen: add each operations person (name, the email they will sign in with, and an **initial
-   password** of at least 8 characters).
-3. **Advisors** screen (operations or master): **Add advisor** with full name, advisor ID (e.g. `ADV001`),
-   region, their email and an **initial password**. Advisors are ranked by the belt system from their entries
-   each week; there is nothing else to set up.
+2. **Regional accounts** screen (`/master`, master only): add each regional account — its tier (**TBA India Ops**
+   national, a **State president**, or a **City president**), name, the email they will sign in with, and an
+   **initial password** of at least 8 characters. Optionally open **Belt thresholds** (`/master/belts`) to adjust
+   the belt boundaries (positive whole numbers, increasing); the defaults keep the current behaviour.
+3. **Advisors** screen (any regional account or master): **Add advisor** with full name, advisor ID (e.g.
+   `ADV001`), region, their email and an **initial password**. A state/city account adds advisors inside its own
+   region; national adds them anywhere. Advisors are ranked by the belt system from their entries each week.
 
 Everyone can then sign in with that email and password, or with Google using the same email. Tell each person
 their initial password; they (or you) can change it afterwards:
 - **They** can use **Forgot password?** on the sign-in screen to get a reset link by email.
-- **You** can reset it for them: on the **Advisors** screen (for advisors) or the **Operations accounts** screen
-  (master, for operations accounts), click **Reset password** next to the person and set a new one. An operations
-  manager can reset only advisors in their own region; the master can reset anyone.
+- **You** can reset it for them: on the **Advisors** screen (for advisors) or the **Regional accounts** screen
+  (master, for regional accounts), click **Reset password** next to the person and set a new one. A regional
+  account can reset only advisors in its own scope (national: any advisor); the master can reset anyone.
 
 To remove someone, click **Deactivate** next to them: they lose access at once and are signed out
 (**Reactivate** undoes it).
@@ -375,8 +385,9 @@ data, or Google Play updates it.
   blocks or undoes the advisor — see [Email (SMTP) setup](#email-smtp-setup). The password the email carries is
   never written to Firestore or the logs.
   `resetUserPassword` sets a new password (`admin.auth().updateUser`) for a user the caller manages — the master
-  for any operations account or advisor, an operations manager only for advisors in its own region (enforced by
-  `canResetPassword` in `src/lib/data/authz.ts`). People can also reset their own password by email
+  for any regional account or advisor, a regional account only for advisors in its own scope (national: any
+  advisor), enforced by `canResetPassword` in `src/lib/data/authz.ts` (the single source of truth for the role
+  hierarchy, alongside `canCreateAdvisor`, `canManageRegionalAccounts` and `canEditBeltThresholds`). People can also reset their own password by email
   (`sendPasswordResetEmail`, the "Forgot password?" link). Every server action verifies the caller's ID token
   (including revocation) and role again, against the `users` entry.
 - Deactivating disables the Auth account and revokes its refresh tokens; the security rules also re-read the
@@ -392,6 +403,7 @@ data, or Google Play updates it.
 | `buildings` | one per advisor and building (`<pid>__<key>`), for the building/city filters and "buildings covered" | the advisor |
 | `direct_leads` | contact_name, company_name, phone, email, notes, lead_date, drop_id | the advisor |
 | `weekly_results` | the weekly belt snapshot: letters and belt per advisor, one per advisor and Monday (the week's start) | the weekly job |
+| `settings/belts` | the three belt thresholds (`yellowMin`, `blueMin`, `greenMin`), master-editable | master (client write, rules-checked) |
 
 ### Security rules (`firestore.rules`)
 - Nothing is readable or writable without the claims of an active, listed person whose entry still matches
@@ -399,8 +411,11 @@ data, or Google Play updates it.
 - Advisors create, read and update only their own drops, leads and buildings; they cannot change `advisor_id` or
   `created_at` and cannot delete. Required fields, lengths and dates are checked, and a responded drop must have a
   response date and a valid phone number or email (or both).
-- Operations and master read everything. The access list and the weekly belt snapshot (`weekly_results`) are
-  written only by the server; advisors read only their own `weekly_results` rows.
+- A regional account reads within its scope; the national tier and master read every region (city/state accounts
+  are constrained to their `region_city`/`region_state`). Any listed user reads `settings/belts` (the belt
+  thresholds), but only master writes it, and only a valid set (positive integers, strictly increasing). The
+  access list and the weekly belt snapshot (`weekly_results`) are written only by the server; advisors read only
+  their own `weekly_results` rows.
 
 ### Search and filters
 Firestore has no full-text search, so each drop stores `search_tokens`: every prefix (up to 20 characters) of
@@ -422,8 +437,9 @@ For each active advisor it counts the entries of the competition week that just 
 using the same week maths as the app — `functions/src/weekly/week.ts`, matching `currentWeek()` in
 `src/lib/stats.ts`, unit-tested) and records the advisor's final belt for that week in
 `weekly_results/<advisor>_<monday>`. The record is created only if it does not already exist, so running the job
-twice for the same week changes nothing. Belts are the sole ranking (Red < 200, Yellow 200-349, Blue 350-500,
-Green 501+); there is no promotion, demotion or level history.
+twice for the same week changes nothing. Belts are the sole ranking, from the master-editable thresholds in
+`settings/belts` (read once per run; defaults Red < 200, Yellow 200-349, Blue 350-500, Green 501+); there is no
+promotion, demotion or level history.
 
 ### Offline
 Firestore offline persistence is on (IndexedDB, multi-tab). An advisor who loses signal while the app is open can

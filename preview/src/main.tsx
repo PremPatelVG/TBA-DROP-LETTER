@@ -17,6 +17,7 @@ import OpsDrops from "@/app/ops/drops/page";
 import OpsAdvisors from "@/app/ops/advisors/page";
 import MasterLayout from "@/app/master/layout";
 import MasterHome from "@/app/master/page";
+import MasterBelts from "@/app/master/belts/page";
 
 type Route = { pattern: RegExp; keys?: string[]; layout?: (p: { children: ReactNode }) => ReactNode; page: () => ReactNode };
 const routes: Route[] = [
@@ -31,6 +32,7 @@ const routes: Route[] = [
   { pattern: /^\/ops\/drops$/, layout: OpsLayout, page: OpsDrops },
   { pattern: /^\/ops\/advisors$/, layout: OpsLayout, page: OpsAdvisors },
   { pattern: /^\/master$/, layout: MasterLayout, page: MasterHome },
+  { pattern: /^\/master\/belts$/, layout: MasterLayout, page: MasterBelts },
 ];
 
 function App() {

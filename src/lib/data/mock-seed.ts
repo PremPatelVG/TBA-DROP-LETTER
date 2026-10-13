@@ -1,4 +1,5 @@
 import { currentWeek } from "@/lib/stats";
+import { DEFAULT_BELT_THRESHOLDS, type BeltThresholds } from "@/lib/belts";
 import type { DemoAccount, Drop, Lead, Profile } from "./types";
 
 export type MockDb = {
@@ -8,10 +9,12 @@ export type MockDb = {
   leads: Lead[];
   /** Demo-only credentials: email → password, standing in for Firebase Auth's email/password provider. */
   passwords: Record<string, string>;
+  /** The belt thresholds, stored as data (the master can edit them in the demo). Firebase: `settings/belts`. */
+  beltThresholds: BeltThresholds;
 };
 
 /** Bump when the shape or volume of the sample data changes; old browser data is then replaced. */
-export const MOCK_VERSION = 10;
+export const MOCK_VERSION = 11;
 
 /** The password every demo account shares. DEMO ONLY — shown on the sign-in screen so the password flow can be tried. */
 export const DEMO_PASSWORD = "demo1234";
@@ -123,9 +126,13 @@ export function buildSeed(): MockDb {
   });
   const profiles: Profile[] = [
     admin({ id: "u-master", role: "master", full_name: "Master Admin", email: "master@example.com" }),
-    // Two scoped operations accounts for the demo: one city (Rajkot), one whole state (Gujarat).
-    admin({ id: "u-ops-city", role: "operations", full_name: "Rajkot Ops", email: "rajkot.ops@example.com", scope_type: "city", scope_value: "Rajkot" }),
-    admin({ id: "u-ops-state", role: "operations", full_name: "Gujarat Ops", email: "gujarat.ops@example.com", scope_type: "state", scope_value: GUJARAT }),
+    // Regional accounts spanning all three tiers: national (TBA India Ops), a State president and two City
+    // presidents. national sees everything but is NOT master (no threshold editor); the state president sees
+    // every Gujarat city (Rajkot + Ahmedabad) but not Mumbai; each city president sees its one city only.
+    admin({ id: "u-ops-national", role: "operations", full_name: "TBA India Ops", email: "indiaops@example.com", scope_type: "national", scope_value: null }),
+    admin({ id: "u-ops-state", role: "operations", full_name: "Gujarat President", email: "gujarat.ops@example.com", scope_type: "state", scope_value: GUJARAT }),
+    admin({ id: "u-ops-city", role: "operations", full_name: "Rajkot President", email: "rajkot.ops@example.com", scope_type: "city", scope_value: "Rajkot" }),
+    admin({ id: "u-ops-ahd", role: "operations", full_name: "Ahmedabad President", email: "ahmedabad.ops@example.com", scope_type: "city", scope_value: "Ahmedabad" }),
     ...ADVISORS.map((a): Profile => ({
       id: a.id, role: "advisor", full_name: a.name, email: `${a.name.toLowerCase().replace(/[^a-z]/g, ".")}@example.com`,
       advisor_code: a.code, city: a.city, state: a.state, zip: a.zip, scope_type: null, scope_value: null,
@@ -254,6 +261,7 @@ export function buildSeed(): MockDb {
     version: MOCK_VERSION,
     profiles,
     passwords,
+    beltThresholds: { ...DEFAULT_BELT_THRESHOLDS },
     drops,
     leads: [
       { id: "l-1", advisor_id: "u-adv1", drop_id: respondedRiya?.id ?? null, contact_name: "Mr. Patel", company_name: respondedRiya?.company_name ?? "Shree Traders",

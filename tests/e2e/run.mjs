@@ -286,16 +286,16 @@ try {
     await signOut();
   });
 
-  await step("master adds an operations user, who can then sign in", async () => {
+  await step("master adds a regional (city president) account, who can then sign in", async () => {
     await signIn("master@example.com", "Master Admin");
     await page.waitForURL(/\/ops$/);
-    await page.getByRole("link", { name: "Operations accounts" }).click();
+    await page.getByRole("link", { name: "Regional accounts" }).click();
     await page.fill("input[name=full_name]", "Dev Shah"); await page.fill("input[name=email]", "dev.shah@example.com");
     await page.selectOption("select[name=scope_type]", "city");
     await page.fill("input[name=scope_value]", "Ahmedabad");
     await page.fill("input[name=password]", "opsmanager-pass-1");
     await page.getByRole("button", { name: "Add account" }).click();
-    await page.getByText("Dev Shah added to operations").waitFor();
+    await page.getByText("Dev Shah added as Ahmedabad President").waitFor();
     await shot("07-master");
     await signOut();
     await signIn("dev.shah@example.com", "Dev Shah");

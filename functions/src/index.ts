@@ -9,9 +9,10 @@ initializeApp();
 /**
  * Every Monday at 09:00 India time: records the final belt standing of each active advisor for the competition
  * week that just ended (Monday 09:00 to Monday 09:00) into weekly_results (functions/src/weekly/snapshot.ts).
- * Belts are the sole ranking — red < 200, yellow 200-349, blue 350-500, green 501+ entries that week — so there
- * is no promotion, demotion or level history. Uses the scheduled time, not the clock, so a retry or a late start
- * still snapshots the same week, and a second run for that week changes nothing.
+ * Belts are the sole ranking, from the master-editable thresholds stored in settings/belts (defaults: red < 200,
+ * yellow 200-349, blue 350-500, green 501+ entries that week), so there is no promotion, demotion or level
+ * history. Uses the scheduled time, not the clock, so a retry or a late start still snapshots the same week, and
+ * a second run for that week changes nothing.
  */
 export const weeklySnapshot = onSchedule(
   {

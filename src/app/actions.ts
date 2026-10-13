@@ -10,7 +10,7 @@ import { FieldValue, Timestamp, type DocumentReference, type DocumentSnapshot } 
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { isEmail, passwordError } from "@/lib/validate";
-import { canResetPassword } from "@/lib/data/authz";
+import { canCreateAdvisor, canResetPassword } from "@/lib/data/authz";
 import { sendWelcomeEmail } from "@/lib/email.server";
 import type { AdvisorCreated, NewAdvisor, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
 
@@ -21,7 +21,7 @@ export type ClaimResult =
   | { status: "error"; message: string };
 
 const ROLES: Role[] = ["advisor", "operations", "master"];
-const SCOPE_TYPES: OpsScopeType[] = ["city", "state"];
+const SCOPE_TYPES: OpsScopeType[] = ["national", "state", "city"];
 
 /** A message meant for the person using the app (anything else is logged and replaced by a generic one). */
 class Refusal extends Error {}
@@ -219,11 +219,16 @@ export async function createAdvisor(idToken: string, input: NewAdvisor): Promise
     const zip = optInput(input.zip, "Zip code", 16);
     const email = googleEmail(input.email);
     const pw = password(input.password);
-    // Operations accounts can only add advisors inside their own region: force the scoped dimension so the
-    // new advisor is always within what the account can see (the other dimension is entered by the account).
+    // A state- or city-scoped account can only add advisors inside its own region: force the scoped dimension so
+    // the new advisor is always within what the account can see (the other dimension is entered by the account).
+    // national (TBA India Ops) can add advisors anywhere, so nothing is forced — both city and state are entered.
     if (me.role === "operations") {
       if (me.scope_type === "city") city = text(me.scope_value, "City", 100);
       else if (me.scope_type === "state") state = text(me.scope_value, "State", 100);
+    }
+    // The shared who-can-create-what rule (same predicate the client uses): stay within the account's scope.
+    if (!canCreateAdvisor({ role: me.role, scope_type: me.scope_type, scope_value: me.scope_value }, { city, state })) {
+      throw new Refusal("You can only add advisors in your own region.");
     }
 
     const db = adminDb();
@@ -261,16 +266,21 @@ async function linkSignIn(ref: DocumentReference, email: string, pw: string, dis
   }
 }
 
-/** Master only: add an operations person to the access list, scoped to one city or one whole state. */
+/**
+ * Master only: add a regional (operations) account to the access list. One role, three tiers — national
+ * ("TBA India Ops", every region), a whole state, or a single city. Only the master creates these; each regional
+ * account then creates advisors within its own scope. national carries no region (scope_value is null).
+ */
 export async function createOpsUser(idToken: string, input: NewOpsUser): Promise<ActionResult<Profile>> {
-  return run("add the operations account", async () => {
+  return run("add the regional account", async () => {
     const me = await caller(idToken, ["master"]);
     const full_name = text(input.full_name, "Name", 100);
     const email = googleEmail(input.email);
     const pw = password(input.password);
     const scope_type = input.scope_type;
-    if (!SCOPE_TYPES.includes(scope_type)) throw new Refusal("Choose whether this account covers a city or a state.");
-    const scope_value = text(input.scope_value, scope_type === "city" ? "City" : "State", 100);
+    if (!SCOPE_TYPES.includes(scope_type)) throw new Refusal("Choose the account's tier: national, state or city.");
+    // national (TBA India Ops) has no region; state/city need the state or city named.
+    const scope_value = scope_type === "national" ? null : text(input.scope_value, scope_type === "state" ? "State" : "City", 100);
     const db = adminDb();
     const ref = db.collection("users").doc();
     await db.runTransaction(async (tx) => {

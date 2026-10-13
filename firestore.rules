@@ -30,15 +30,18 @@ service cloud.firestore {
     function isAdvisor() { return listed() && request.auth.token.role == 'advisor'; }
     function isAdmin() { return listed() && request.auth.token.role in ['operations', 'master']; }
     function isMaster() { return listed() && request.auth.token.role == 'master'; }
-    // An operations account is scoped to one franchise region: a single city or a whole state. Master is not.
+    // A regional (operations) account has one role with three tiers: national (every region), a whole state, or
+    // a single city. Master is unrestricted and is not an operations account.
     function isOpsOnly() { return listed() && request.auth.token.role == 'operations'; }
     function scopeType() { return request.auth.token.get('scope_type', null); }
     function scopeValue() { return request.auth.token.get('scope_value', null); }
-    // Whether a document's denormalized city/state falls in the operations account's region (city- or state-level).
+    // Whether a document's denormalized city/state falls in the regional account's scope. national ⇒ every region;
+    // state ⇒ the whole state; city ⇒ that one city.
     function inScope(docCity, docState) {
-      return scopeValue() is string
-        && ((scopeType() == 'city' && docCity == scopeValue())
-            || (scopeType() == 'state' && docState == scopeValue()));
+      return scopeType() == 'national'
+        || (scopeValue() is string
+            && ((scopeType() == 'city' && docCity == scopeValue())
+                || (scopeType() == 'state' && docState == scopeValue())));
     }
 
     // ---------- field checks ----------
@@ -161,6 +164,21 @@ service cloud.firestore {
       allow update: if isAdvisor() && resource.data.advisor_id == me() && ownerAndCreatedUnchanged()
         && validLead(request.resource.data);
       allow delete: if false;
+    }
+
+    // ---------- belt thresholds (settings/belts) ----------
+
+    // The three belt boundaries, stored as data. Any listed user reads them (every belt computation uses the same
+    // source); only the master writes them, and only a valid set: positive integers, strictly increasing.
+    function validBeltSettings(d) {
+      return d.keys().hasOnly(['yellowMin', 'blueMin', 'greenMin'])
+        && d.keys().hasAll(['yellowMin', 'blueMin', 'greenMin'])
+        && d.yellowMin is int && d.blueMin is int && d.greenMin is int
+        && d.yellowMin > 0 && d.yellowMin < d.blueMin && d.blueMin < d.greenMin;
+    }
+    match /settings/belts {
+      allow read: if listed();
+      allow write: if isMaster() && validBeltSettings(request.resource.data);
     }
 
     // ---------- weekly belt snapshot ----------

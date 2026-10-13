@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { api, USE_MOCK, type AccessResult, type Cursor, type Drop, type DropFilter, type Profile, type Role } from "@/lib/data";
 import { ymd } from "@/lib/stats";
+import { scopeLabel } from "@/lib/labels";
 import { registerAdvisorServiceWorker } from "@/lib/advisor-offline";
 
 export const inputCls = "mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-200";
@@ -44,7 +45,10 @@ const ADMIN_NAV = [
   { href: "/ops/drops", label: "All drops" },
   { href: "/ops/advisors", label: "Advisors" },
 ];
-const MASTER_NAV = [{ href: "/master", label: "Operations accounts" }];
+const MASTER_NAV = [
+  { href: "/master", label: "Regional accounts" },
+  { href: "/master/belts", label: "Belt thresholds" },
+];
 
 const ROLE_LABEL: Record<Role, string> = { advisor: "Advisor", operations: "Operations", master: "Master" };
 export const homeFor = (r: Role) => (r === "advisor" ? "/advisor" : "/ops");
@@ -137,12 +141,13 @@ function SyncBanner() {
 }
 const DemoBadge = () => (USE_MOCK ? <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">DEMO DATA</span> : null);
 
-/** How the signed-in admin's franchise region reads in the header: the master sees everything; an operations
- * account is pinned to one city or one whole state. */
+/** How the signed-in admin's scope reads in the header: master sees everything; a regional account is pinned to
+ * national (all regions), one whole state, or one city. */
 export function regionLabel(user: Pick<Profile, "role" | "scope_type" | "scope_value">): string | null {
   if (user.role === "master") return "All regions";
-  if (user.role === "operations" && user.scope_value) return `${user.scope_type === "state" ? "State" : "City"}: ${user.scope_value}`;
-  return null;
+  if (user.role !== "operations") return null;
+  const label = scopeLabel(user.scope_type, user.scope_value);
+  return label === "—" ? null : label;
 }
 
 /** Desktop web admin chrome for operations and master. */

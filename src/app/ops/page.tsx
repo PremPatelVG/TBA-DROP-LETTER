@@ -9,12 +9,12 @@ export default function OpsDashboard() {
   const week = currentWeek();
   const { data, error } = useData(async () => {
     const advisors = await api.listAdvisors();
-    const summary = await api.opsSummary(week, advisors.map((a) => a.id));
-    return { advisors, summary };
+    const [summary, thresholds] = await Promise.all([api.opsSummary(week, advisors.map((a) => a.id)), api.getBeltThresholds()]);
+    return { advisors, summary, thresholds };
   });
   if (error) return <Notice kind="error">{error}</Notice>;
   if (!data) return <p className="text-slate-500">Loading...</p>;
-  const { advisors, summary: s } = data;
+  const { advisors, summary: s, thresholds } = data;
   if (!s) return <Notice kind="info">The dashboard needs an internet connection.</Notice>;
   // Belt leaderboard rows from this week's per-advisor entry counts (one drop entry is one letter).
   const leaderboard = advisors.map((a) => ({
@@ -32,7 +32,7 @@ export default function OpsDashboard() {
         <MonthChart rows={s.months.map((m) => ({ ...m, rate: rate(m.responses, m.letters) }))} />
       </section>
 
-      <OpsBeltLeaderboard rows={leaderboard} />
+      <OpsBeltLeaderboard rows={leaderboard} thresholds={thresholds} />
     </>
   );
 }

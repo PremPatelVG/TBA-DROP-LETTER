@@ -42,6 +42,7 @@ import {
 import { buildingKey, cityKey, dropIndexTokens, matchesDropSearch, matchesPlace, matchesResponse, MAX_TOKEN_LENGTH, queryToken, searchTerms } from "@/lib/search";
 import { lastMonths } from "@/lib/stats";
 import { responseContactError } from "@/lib/validate";
+import { beltThresholdsError, DEFAULT_BELT_THRESHOLDS, type BeltThresholds } from "@/lib/belts";
 import type { AccessResult, AdvisorSummary, BuildingRef, DataApi, Drop, DropFilter, Lead, LeaderboardRow, Profile } from "./types";
 
 /*
@@ -277,9 +278,10 @@ function toDrop(snap: DocumentSnapshot): Drop {
 function scopeWhere(cityField: string, stateField: string): QueryConstraint[] {
   const p = profile();
   if (p.role !== "operations") return [];
-  if (p.scope_type === "city" && p.scope_value) return [where(cityField, "==", p.scope_value)];
+  if (p.scope_type === "national") return []; // national (TBA India Ops) sees every region, like master
   if (p.scope_type === "state" && p.scope_value) return [where(stateField, "==", p.scope_value)];
-  return []; // an operations account with no scope: the security rules refuse the read (fail closed)
+  if (p.scope_type === "city" && p.scope_value) return [where(cityField, "==", p.scope_value)];
+  return []; // a regional account with no usable scope: the security rules refuse the read (fail closed)
 }
 
 /**
@@ -639,6 +641,30 @@ export const firebaseApi: DataApi = {
     const created = Timestamp.now();
     await settle(setDoc(ref, { ...input, advisor_id: p.id, created_at: created }));
     return { ...input, id: ref.id, advisor_id: p.id, created_at: created.toDate().toISOString() };
+  },
+
+  // ----- belt thresholds (settings/belts: any listed user reads; only master writes, per firestore.rules) -----
+
+  async getBeltThresholds() {
+    try {
+      const snap = await getDoc(doc(clientDb(), "settings", "belts"));
+      const d = snap.data();
+      if (d && typeof d.yellowMin === "number" && typeof d.blueMin === "number" && typeof d.greenMin === "number") {
+        return { yellowMin: d.yellowMin, blueMin: d.blueMin, greenMin: d.greenMin };
+      }
+    } catch (e) {
+      if (!offline(e) && code(e) !== "permission-denied") throw e;
+      // offline or refused: fall back to the defaults so belts still render
+    }
+    return { ...DEFAULT_BELT_THRESHOLDS };
+  },
+  async setBeltThresholds(thresholds) {
+    const p = profile();
+    if (p.role !== "master") throw new Error("Only the master can edit the belt thresholds.");
+    const err = beltThresholdsError(thresholds);
+    if (err) throw new Error(err);
+    const payload: BeltThresholds = { yellowMin: thresholds.yellowMin, blueMin: thresholds.blueMin, greenMin: thresholds.greenMin };
+    await settle(setDoc(doc(clientDb(), "settings", "belts"), payload));
   },
 };
 
