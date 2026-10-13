@@ -231,13 +231,30 @@ simply share their login and the app link yourself (you will see a short note wh
 To turn it on, set these on the server — Firebase App Hosting: `apphosting.yaml` (commented placeholders are there),
 with the **password in Cloud Secret Manager**, not in the file; other hosts: environment variables. Nothing here is
 ever committed to the repo (see `.env.example`):
-- `SMTP_HOST` — your mail provider's SMTP server for `indiaops@tbaindia.in` (for example `smtp.zoho.in`).
+- `SMTP_HOST` — your mail provider's SMTP server for `indiaops@tbaindia.in` (Google Workspace: `smtp.gmail.com`;
+  see the recommended config below).
 - `SMTP_PORT` — `587` (STARTTLS, the default) or `465` (implicit TLS, with `SMTP_SECURE=true`).
 - `SMTP_SECURE` — `true` only for port 465; otherwise leave it off.
 - `SMTP_USER` / `SMTP_PASS` — the mailbox login (usually `indiaops@tbaindia.in`) and its password or app-password.
 - `MAIL_FROM` — the From address (defaults to `indiaops@tbaindia.in`).
 - `ADVISOR_APK_URL` — where you host the built app (see [Android app for advisors](#android-app-for-advisors));
   the email links here so the advisor installs it on their phone, for example `https://app.tbaindia.in/tba-advisor.apk`.
+
+**Recommended config — Google Workspace mailbox (`indiaops@tbaindia.in`):**
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=indiaops@tbaindia.in
+SMTP_PASS=<Google App Password>
+MAIL_FROM=indiaops@tbaindia.in
+ADVISOR_APK_URL=https://app.tbaindia.in/tba-advisor.apk
+```
+
+`SMTP_PASS` must be a **Google App Password**, not the normal mailbox password: enable 2-Step Verification on the
+`indiaops@tbaindia.in` account, then go to **Security → App passwords → Mail** to generate one. Store it in Cloud
+Secret Manager (Firebase App Hosting) or a server environment variable — never commit it to the repo.
 
 The welcome email fires on advisor creation. It contains the advisor's **username** (their email), the **initial
 password** you set, their **Advisor ID**, and the **download link** (an "open on your phone to install" link, not a

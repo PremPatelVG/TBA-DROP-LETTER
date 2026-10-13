@@ -6,6 +6,7 @@ import { api, USE_MOCK, type AccessResult, type Cursor, type Drop, type DropFilt
 import { ymd } from "@/lib/stats";
 import { scopeLabel } from "@/lib/labels";
 import { registerAdvisorServiceWorker } from "@/lib/advisor-offline";
+import { BrandLogo } from "@/components/brand-logo";
 
 export const inputCls = "mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-200";
 export const btnCls = "inline-flex items-center justify-center rounded-md bg-green-700 px-4 py-2.5 font-medium text-white hover:bg-green-800 disabled:opacity-50";
@@ -161,8 +162,10 @@ function AdminShell({ user, children }: { user: Profile; children: React.ReactNo
       <header className="sticky top-0 z-10 border-b bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-green-700">TBA Drop Letter · Admin<DemoBadge /></p>
-            <p className="truncate text-sm text-slate-600">{ROLE_LABEL[user.role]} · {user.full_name}</p>
+            <div className="flex items-center"><BrandLogo size="sm" tone="brand" /><DemoBadge /></div>
+            <p className="mt-1 truncate text-sm text-slate-600">
+              Drop Letter · Admin · {ROLE_LABEL[user.role]} · {user.full_name}
+            </p>
           </div>
           <div className="flex shrink-0 items-center gap-3">
             {region && (
@@ -216,8 +219,10 @@ function AdvisorShell({ user, children }: { user: Profile; children: React.React
       <header className="sticky top-0 z-10 bg-green-700 text-white" style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Drop Letter<DemoBadge /></p>
-            <p className="truncate text-xs text-green-100">{user.full_name} · {user.advisor_code}</p>
+            <div className="flex items-center"><BrandLogo size="sm" tone="inverse" /><DemoBadge /></div>
+            <p className="mt-1 truncate text-xs text-green-100">
+              Drop Letter · {user.full_name} · {user.advisor_code}
+            </p>
           </div>
           <button onClick={signOut} className="rounded-md px-2 py-1 text-xs text-green-100 hover:bg-green-600">Sign out</button>
         </div>

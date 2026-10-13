@@ -5,6 +5,7 @@ import { api, USE_MOCK, type AccessResult, type DemoAccount } from "@/lib/data";
 import { resetMockData } from "@/lib/data/mock";
 import { accessRedirect, btnCls, errMsg, homeFor, inputCls, Notice, useData } from "@/components/ui";
 import { GoogleMark } from "@/components/google-mark";
+import { BrandLogo } from "@/components/brand-logo";
 
 type Phase = "checking" | "idle" | "pending" | "redirecting";
 const GOOGLE_LABEL: Record<Phase, string> = { checking: "Checking sign-in...", idle: "Sign in with Google", pending: "Please wait...", redirecting: "Opening Google..." };
@@ -72,8 +73,11 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-slate-50 px-4 py-8">
       <div className="w-full max-w-sm space-y-4">
+        <div className="pt-2">
+          <BrandLogo size="lg" tone="brand" align="center" className="w-full" />
+        </div>
         <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-green-700">TBA Drop Letter</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-green-700">Drop Letter</p>
           <h1 className="mt-1 text-xl font-semibold">Sign in</h1>
           <p className="mt-1 text-sm text-slate-600">Use the email your operations team added for you, with your password or Google.</p>
 
