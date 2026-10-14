@@ -1,29 +1,34 @@
 "use client";
 import { useState } from "react";
+// The official TBA logo, imported through the bundler so it is self-contained:
+// - Next (webpack) returns a StaticImageData object and emits the file under
+//   /_next/static/; the same asset also ships at /brand/tba-logo.webp in public/.
+// - The Vite preview build inlines it as a `data:` URI string (it is tiny), so the
+//   single-file artifact carries the logo with no external request.
+import tbaLogo from "../../public/brand/tba-logo.webp";
 
 /**
  * TBA brand lockup (Transworld Business Advisors).
  *
- * Shows the official logo image when it is present, and otherwise a clean,
- * intentional typographic wordmark — "TBA" in the brand green with the full
- * "Transworld Business Advisors" name beneath it. The wordmark is the default,
- * so a missing logo file never shows a broken/placeholder image.
+ * The official logo image is the primary brand mark. The typographic wordmark
+ * below ("TBA" + the full name) is only an automatic fallback, shown if the image
+ * ever fails to load, so a broken image never leaves an empty brand spot.
  *
- * ── Swapping in the official logo ─────────────────────────────────────────────
- * Drop the official file here (transparent background; SVG preferred, PNG fine):
+ * The supplied logo is a WHITE knockout mark (transparent background), so every
+ * place it is used sits it on a brand-green surface where it reads clearly — the
+ * login hero, the advisor top bar, and the ops/master header strip.
  *
- *       public/brand/tba-logo.svg
- *
- * It is then picked up automatically everywhere this component is used — the
- * login screen and the advisor / ops / master headers. No other code change is
- * needed. To use a different path or file name, or to force the wordmark, edit
- * TBA_LOGO_SRC below (set it to null to always render the wordmark).
- *
- * Do NOT commit a third-party trademarked logo unless TBA has provided it / you
- * have the rights to use it. The wordmark below is a plain typographic placeholder.
+ * ── Swapping the logo ─────────────────────────────────────────────────────────
+ * Replace public/brand/tba-logo.webp with the new file (keep the name, or update
+ * the import above). It is picked up everywhere this component is used. Set
+ * TBA_LOGO_SRC to null to force the wordmark instead.
  * ──────────────────────────────────────────────────────────────────────────────
  */
-export const TBA_LOGO_SRC: string | null = "/brand/tba-logo.svg";
+// Next yields a StaticImageData object; Vite yields a plain URL/`data:` string.
+// Normalise both to a usable src (null → always render the wordmark).
+const logoAsset = tbaLogo as unknown;
+export const TBA_LOGO_SRC: string | null =
+  typeof logoAsset === "string" ? logoAsset : ((logoAsset as { src?: string } | null)?.src ?? null);
 
 type Size = "sm" | "lg";
 type Tone = "brand" | "inverse";
@@ -41,11 +46,12 @@ const TONE: Record<Tone, { tba: string; sub: string }> = {
 
 /**
  * Brand lockup for headers (size="sm") and the login screen (size="lg").
- * tone="inverse" is for the green advisor top bar; tone="brand" for white surfaces.
+ * tone="inverse" is for green surfaces (the default placement for the white logo);
+ * tone="brand" styles the wordmark fallback for white surfaces.
  */
 export function BrandLogo({
   size = "sm",
-  tone = "brand",
+  tone = "inverse",
   subtitle = true,
   align = "start",
   className = "",

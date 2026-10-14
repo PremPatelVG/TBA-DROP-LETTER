@@ -159,30 +159,35 @@ function AdminShell({ user, children }: { user: Profile; children: React.ReactNo
   const region = regionLabel(user);
   return (
     <div className="min-h-dvh bg-slate-50">
-      <header className="sticky top-0 z-10 border-b bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <div className="flex items-center"><BrandLogo size="sm" tone="brand" /><DemoBadge /></div>
-            <p className="mt-1 truncate text-sm text-slate-600">
-              Drop Letter · Admin · {ROLE_LABEL[user.role]} · {user.full_name}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            {region && (
-              <span className="whitespace-nowrap rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-800" title="Region you manage">
-                {region}
-              </span>
-            )}
-            <button onClick={signOut} className={btn2Cls}>Sign out</button>
+      <header className="sticky top-0 z-10 border-b">
+        {/* Brand strip: brand green so the white logo reads (consistent with the advisor bar). */}
+        <div className="bg-green-700 text-white">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center"><BrandLogo size="sm" tone="inverse" /><DemoBadge /></div>
+              <p className="mt-1 truncate text-sm text-green-100">
+                Drop Letter · Admin · {ROLE_LABEL[user.role]} · {user.full_name}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              {region && (
+                <span className="whitespace-nowrap rounded-full bg-green-600 px-2.5 py-1 text-xs font-medium text-white" title="Region you manage">
+                  {region}
+                </span>
+              )}
+              <button onClick={signOut} className="inline-flex items-center justify-center rounded-md border border-white/40 px-3 py-2 text-sm font-medium text-white hover:bg-green-600">Sign out</button>
+            </div>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 pb-2 text-sm">
-          {nav.map((n) => (
-            <Link key={n.href} href={n.href}
-              className={`whitespace-nowrap rounded-md px-3 py-1.5 ${n.href === path ? "bg-green-50 font-medium text-green-700" : "text-slate-700 hover:bg-slate-100"}`}>
-              {n.label}
-            </Link>
-          ))}
+        <nav className="bg-white">
+          <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 py-2 text-sm">
+            {nav.map((n) => (
+              <Link key={n.href} href={n.href}
+                className={`whitespace-nowrap rounded-md px-3 py-1.5 ${n.href === path ? "bg-green-50 font-medium text-green-700" : "text-slate-700 hover:bg-slate-100"}`}>
+                {n.label}
+              </Link>
+            ))}
+          </div>
         </nav>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>

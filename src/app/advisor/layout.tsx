@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Drop Letter", statusBarStyle: "default" },
   icons: { apple: "/icons/advisor-192.png" },
 };
-export const viewport: Viewport = { themeColor: "#4f46e5", viewportFit: "cover" };
+export const viewport: Viewport = { themeColor: "#15803d", viewportFit: "cover" };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return <RequireRole roles={["advisor"]} variant="advisor">{children}</RequireRole>;

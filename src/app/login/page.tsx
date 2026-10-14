@@ -74,7 +74,9 @@ export default function LoginPage() {
     <main className="flex min-h-dvh items-center justify-center bg-slate-50 px-4 py-8">
       <div className="w-full max-w-sm space-y-4">
         <div className="pt-2">
-          <BrandLogo size="lg" tone="brand" align="center" className="w-full" />
+          <div className="flex items-center justify-center rounded-xl bg-green-700 px-6 py-7 shadow-sm">
+            <BrandLogo size="lg" tone="inverse" align="center" />
+          </div>
         </div>
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-green-700">Drop Letter</p>
