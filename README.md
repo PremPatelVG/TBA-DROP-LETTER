@@ -140,6 +140,26 @@ Pick your project with the arrow keys and Enter, and when asked for an alias typ
 (This saves the project ID in the file `.firebaserc`; you can also edit that file and replace
 `your-firebase-project-id` with your project ID.)
 
+### 6b. Set up the welcome email (SMTP) — before you deploy
+The non-secret SMTP settings (host, port, user, from) are already filled in `apphosting.yaml` for the
+`indiaops@tbaindia.in` Google Workspace mailbox. You just create the password secret and set the APK link:
+1. Create a **Google App Password** on `indiaops@tbaindia.in`: turn on 2-Step Verification, then
+   **Google Account → Security → App passwords → Mail**, and copy the 16-character code.
+2. Store it in Cloud Secret Manager for this project (paste the code when prompted; answer **Yes** to grant the
+   backend access):
+   ```
+   npx firebase apphosting:secrets:set SMTP_PASS
+   ```
+3. `ADVISOR_APK_URL` in `apphosting.yaml` points at `https://app.tbaindia.in/tba-advisor.apk` by default. The
+   download link in the email only works once a real APK is hosted there (go-live step 11 / the Android section),
+   so edit that value to your real hosted URL when you have one and redeploy. Until then the login email still
+   sends but its download link will 404.
+
+If you skip this step, advisors are still created and the email is simply skipped with a short note. See
+[Email (SMTP) setup](#email-smtp-setup) for details and other mail providers. The deploy in step 7 **fails** if the
+`SMTP_PASS` secret has not been created, because `apphosting.yaml` references it — so do step 2 above first (or
+comment out the `SMTP_PASS` block in `apphosting.yaml` if you are not using the welcome email yet).
+
 ### 7. Deploy
 ```
 npx firebase deploy
@@ -228,9 +248,11 @@ When you add an advisor (step 10), the app can email them their login and a link
 sent **from `indiaops@tbaindia.in`**. This is optional: if it is not set up, advisors are still created and you
 simply share their login and the app link yourself (you will see a short note when the email is skipped).
 
-To turn it on, set these on the server — Firebase App Hosting: `apphosting.yaml` (commented placeholders are there),
-with the **password in Cloud Secret Manager**, not in the file; other hosts: environment variables. Nothing here is
-ever committed to the repo (see `.env.example`):
+On Firebase App Hosting the non-secret settings are **already filled in** in `apphosting.yaml` for the
+`indiaops@tbaindia.in` Google Workspace mailbox, so you normally only need to (a) create the `SMTP_PASS` secret and
+(b) set `ADVISOR_APK_URL` to your hosted APK. The two commands are in go-live step 3b below. On other hosts, set all
+of these as environment variables. The password is **never** stored in `apphosting.yaml` or committed to the repo
+(see `.env.example`) — it lives only in Cloud Secret Manager:
 - `SMTP_HOST` — your mail provider's SMTP server for `indiaops@tbaindia.in` (Google Workspace: `smtp.gmail.com`;
   see the recommended config below).
 - `SMTP_PORT` — `587` (STARTTLS, the default) or `465` (implicit TLS, with `SMTP_SECURE=true`).
@@ -253,8 +275,21 @@ ADVISOR_APK_URL=https://app.tbaindia.in/tba-advisor.apk
 ```
 
 `SMTP_PASS` must be a **Google App Password**, not the normal mailbox password: enable 2-Step Verification on the
-`indiaops@tbaindia.in` account, then go to **Security → App passwords → Mail** to generate one. Store it in Cloud
-Secret Manager (Firebase App Hosting) or a server environment variable — never commit it to the repo.
+`indiaops@tbaindia.in` account, then go to **Security → App passwords → Mail** to generate one (a 16-character
+code). Store it in Cloud Secret Manager — never commit it to the repo. For this project, run once from the project
+folder (after `firebase use --add`):
+
+```
+firebase apphosting:secrets:set SMTP_PASS
+```
+
+Paste the App Password when prompted, and answer **Yes** when it offers to grant the `tba-drop-letter` backend
+access to the secret. `apphosting.yaml` already references it as `secret: SMTP_PASS`, so the next
+`firebase deploy` wires it into the running server. (If you are on Spark/other hosting, set `SMTP_PASS` as a
+normal environment variable instead.) To rotate the password later, run the same command again and redeploy.
+
+> The deploy **fails** if `apphosting.yaml` references `secret: SMTP_PASS` but the secret does not exist yet, so
+> create the secret **before** the first `firebase deploy`.
 
 The welcome email fires on advisor creation. It contains the advisor's **username** (their email), the **initial
 password** you set, their **Advisor ID**, and the **download link** (an "open on your phone to install" link, not a
