@@ -10,9 +10,10 @@ import { FieldValue, Timestamp, type DocumentReference, type DocumentSnapshot } 
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { isEmail, passwordError } from "@/lib/validate";
-import { canCreateAdvisor, canResetPassword } from "@/lib/data/authz";
-import { sendWelcomeEmail } from "@/lib/email.server";
-import type { AdvisorCreated, NewAdvisor, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
+import { canCreateAdvisor, canResendWelcome, canResetPassword, canSetUserActive } from "@/lib/data/authz";
+import { sendWelcomeEmail, welcomeEmailNotReady } from "@/lib/email.server";
+import { randomBytes } from "node:crypto";
+import type { AdvisorCreated, NewAdvisor, WelcomeEmailResult, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export type ClaimResult =
@@ -297,7 +298,8 @@ export async function createOpsUser(idToken: string, input: NewOpsUser): Promise
 }
 
 /**
- * Deactivate or reactivate someone. Operations and master: advisors. Master only: operations accounts.
+ * Deactivate or reactivate someone. Master: any advisor or operations account. Operations: advisors in its own
+ * region only (national: any advisor), enforced by {@link canSetUserActive}.
  * Deactivating also disables their Firebase account and revokes their sessions; the security rules
  * already refuse every read and write from an inactive entry.
  */
@@ -309,8 +311,11 @@ export async function setUserActive(idToken: string, id: string, active: boolean
     const snap = await ref.get();
     const t = snap.data();
     if (!t) throw new Refusal("User not found.");
-    const allowed = t.role === "advisor" || (t.role === "operations" && me.role === "master");
-    if (!allowed) throw new Refusal("Only master can manage operations accounts.");
+    // Master: any advisor or regional account. A regional account: advisors inside its own scope only (fail closed).
+    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null };
+    if (!canSetUserActive(me, target)) {
+      throw new Refusal(t.role === "advisor" ? "You can only manage advisors in your own region." : "Only master can manage operations accounts.");
+    }
     await ref.update({ active, updated_at: FieldValue.serverTimestamp(), updated_by: me.pid });
     if (t.uid) {
       const auth = adminAuth();
@@ -347,5 +352,36 @@ export async function resetUserPassword(idToken: string, id: string, newPassword
       await ref.update({ uid: created.uid });
     }
     return null;
+  });
+}
+
+/**
+ * Resend an advisor's welcome email (login + app download link). The original password is never stored, so this
+ * sets a fresh temporary password on their Firebase Auth user and emails it. Same authorisation as
+ * {@link resetUserPassword}: master → any advisor; an operations account → advisors in its own region only.
+ * Refuses up front (without touching the password) when email is not configured.
+ */
+export async function resendWelcomeEmail(idToken: string, id: string): Promise<ActionResult<WelcomeEmailResult>> {
+  return run("resend the welcome email", async () => {
+    const me = await caller(idToken, ["operations", "master"]);
+    const ref = adminDb().collection("users").doc(id);
+    const t = (await ref.get()).data();
+    if (!t) throw new Refusal("User not found.");
+    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null };
+    if (!canResendWelcome(me, target)) throw new Refusal("You are not allowed to resend this advisor's welcome email.");
+    if (t.active !== true) throw new Refusal("Reactivate the advisor before resending their welcome email.");
+    const notReady = welcomeEmailNotReady();
+    if (notReady) throw new Refusal(`The welcome email cannot be sent: ${notReady}.`);
+    const pw = randomBytes(9).toString("base64url"); // 12 characters
+    const auth = adminAuth();
+    let uid: string | null = typeof t.uid === "string" ? t.uid : null;
+    if (!uid) uid = (await auth.getUserByEmail(t.email).catch(() => null))?.uid ?? null;
+    if (uid) {
+      await auth.updateUser(uid, { password: pw, emailVerified: true });
+    } else {
+      const created = await auth.createUser({ email: t.email, password: pw, emailVerified: true, displayName: t.full_name });
+      await ref.update({ uid: created.uid });
+    }
+    return sendWelcomeEmail({ name: t.full_name ?? "", advisorId: t.advisor_code ?? "", email: t.email, password: pw });
   });
 }

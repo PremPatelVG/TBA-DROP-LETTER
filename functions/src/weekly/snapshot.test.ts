@@ -85,6 +85,8 @@ test("snapshots the ended week's belt standing for every active advisor", { skip
   assert.equal(a.belt, "green");
   assert.equal(a.week_start, "2026-09-21");
   assert.equal(a.week_end, "2026-09-27");
+  assert.equal(a.region_city, "Test", "filed in the advisor's region for scoped reads");
+  assert.equal(a.region_state, "Gujarat");
   const b = (await db.doc("weekly_results/b_2026-09-21").get()).data()!;
   assert.equal(b.letters, 240);
   assert.equal(b.belt, "yellow");

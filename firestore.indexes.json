@@ -909,6 +909,34 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "direct_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "region_city",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lead_date",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "direct_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "region_state",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lead_date",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

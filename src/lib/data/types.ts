@@ -134,7 +134,8 @@ export type LeadInput = {
   lead_date: string;
   drop_id: string | null;
 };
-export type Lead = LeadInput & { id: string; advisor_id: string; created_at: string };
+/** `region_city`/`region_state`: the creating advisor's city and state, denormalized for regional scoping (as on drops). */
+export type Lead = LeadInput & { id: string; advisor_id: string; region_city: string | null; region_state: string | null; created_at: string };
 
 /** `password` is the initial sign-in password the admin sets; the account is provisioned in Firebase Auth with it. */
 export type NewOpsUser = { full_name: string; email: string; scope_type: OpsScopeType; scope_value: string; password: string };
@@ -214,6 +215,11 @@ export interface DataApi {
    * account: advisors in its own region only). Sets the new password in Firebase Auth; see {@link canResetPassword}.
    */
   resetUserPassword(id: string, newPassword: string): Promise<void>;
+  /**
+   * Resend an advisor's welcome email (login + app link). Sets a fresh temporary password, since the original is
+   * never stored. Same authorisation as resetUserPassword (regional scope enforced). The demo returns a preview.
+   */
+  resendWelcomeEmail(id: string): Promise<WelcomeEmailResult>;
 
   /** Newest first. Returns up to `limit` rows and a cursor for the next page (null when there are no more). */
   findDrops(filter: DropFilter, page: { limit: number; cursor?: Cursor | null }): Promise<DropPage>;

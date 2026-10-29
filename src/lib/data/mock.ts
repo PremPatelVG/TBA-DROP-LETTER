@@ -5,7 +5,7 @@ import { beltThresholdsError, DEFAULT_BELT_THRESHOLDS } from "@/lib/belts";
 import { regionalTitle, scopeLabel } from "@/lib/labels";
 import { buildWelcomeEmail, DEFAULT_MAIL_FROM } from "@/lib/email";
 import { buildSeed, DEMO_PASSWORD, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
-import { accessFor, canCreateAdvisor, canResetPassword, passwordSignIn } from "./authz";
+import { accessFor, canCreateAdvisor, canResendWelcome, canResetPassword, canSetUserActive, passwordSignIn } from "./authz";
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile, type WelcomeEmailPreview, type WelcomeEmailResult } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
@@ -72,13 +72,6 @@ function requireMaster() {
 }
 
 const newestFirst = (a: Drop, b: Drop) => b.drop_date.localeCompare(a.drop_date) || b.created_at.localeCompare(a.created_at);
-
-/** Imitates the security rules: advisors only see their own rows (used for leads, which are not region-scoped). */
-const visible = <T extends { advisor_id: string }>(rows: T[], advisorId?: string) => {
-  const p = me();
-  const scope = isAdminRole(p.role) ? advisorId : p.id;
-  return scope ? rows.filter((r) => r.advisor_id === scope) : rows;
-};
 
 /** A regional account's scope filter for anything carrying a city and state; master/national: no filter. */
 function inScope<T>(p: Profile, rows: T[], city: (r: T) => string | null, state: (r: T) => string | null): T[] {
@@ -230,8 +223,10 @@ export const mockApi: DataApi = {
     const target = load().profiles.find((p) => p.id === id);
     if (!target) throw new Error("User not found");
     if (target.id === actor.id) throw new Error("You cannot deactivate yourself.");
-    const allowed = target.role === "advisor" || (target.role === "operations" && actor.role === "master");
-    if (!allowed) throw new Error("Only master can manage operations accounts.");
+    // Same authorisation as the server: master → anyone they manage; operations → advisors in their region only.
+    if (!canSetUserActive(actor, target)) {
+      throw new Error(target.role === "advisor" ? "You can only manage advisors in your own region." : "Only master can manage operations accounts.");
+    }
     target.active = active;
     save();
   },
@@ -247,6 +242,25 @@ export const mockApi: DataApi = {
     db.passwords[target.email] = newPassword;
     save();
     return wait(undefined);
+  },
+  async resendWelcomeEmail(id) {
+    const actor = requireOps();
+    const db = load();
+    const target = db.profiles.find((p) => p.id === id);
+    if (!target) throw new Error("User not found.");
+    if (!canResendWelcome(actor, target)) throw new Error("You are not allowed to resend this advisor's welcome email.");
+    if (!target.active) throw new Error("Reactivate the advisor before resending their welcome email.");
+    // As on the server: the original password is never kept, so a fresh temporary one is set and emailed.
+    const bytes = crypto.getRandomValues(new Uint8Array(9));
+    const password = Array.from(bytes, (b) => "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 56]).join("") + "7";
+    db.passwords[target.email] = password;
+    save();
+    const preview: WelcomeEmailPreview = {
+      from: DEFAULT_MAIL_FROM,
+      to: target.email,
+      ...buildWelcomeEmail({ name: target.full_name, advisorId: target.advisor_code ?? "", email: target.email, password, apkUrl: DEMO_APK_URL }),
+    };
+    return wait({ status: "preview", preview } as WelcomeEmailResult);
   },
 
   async findDrops(f, { limit, cursor }) {
@@ -332,12 +346,16 @@ export const mockApi: DataApi = {
   },
 
   async listLeads() {
-    return wait(visible(load().leads).slice().sort((a, b) => b.lead_date.localeCompare(a.lead_date)));
+    // Imitates the rules: advisors their own; operations their region (region_city/region_state); master all.
+    const p = me();
+    const rows = p.role === "advisor" ? load().leads.filter((l) => l.advisor_id === p.id) : inScope(p, load().leads, (l) => l.region_city, (l) => l.region_state);
+    return wait(rows.slice().sort((a, b) => b.lead_date.localeCompare(a.lead_date)));
   },
   async createLead(input) {
     const p = me();
     if (p.role !== "advisor") throw new Error("Only advisors log leads");
-    const l = { ...input, id: uid("l"), advisor_id: p.id, created_at: new Date().toISOString() };
+    // Filed in the advisor's own region, like drops, so regional accounts see only their region's leads.
+    const l = { ...input, id: uid("l"), advisor_id: p.id, region_city: p.city, region_state: p.state, created_at: new Date().toISOString() };
     load().leads.push(l);
     save();
     return wait(l);

@@ -81,6 +81,9 @@ export async function runWeeklySnapshot(db: Firestore, at: Date): Promise<Snapsh
         full_name: a.full_name ?? null,
         city: a.city ?? null,
         state: a.state ?? null,
+        // The advisor's region, denormalized (as on drops) so the rules can scope regional accounts' reads.
+        region_city: a.city ?? null,
+        region_state: a.state ?? null,
         week_start: week.start,
         week_end: week.end,
         letters,

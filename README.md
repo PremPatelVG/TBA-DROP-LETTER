@@ -453,8 +453,8 @@ data, or Google Play updates it.
 | `users` | access list: role, full_name, email, advisor_code, region, active, uid | server only |
 | `drops` | one letter each: advisor_id, office_number, company_name, building_name, block_no, area, city, full_address, drop_date, responded, response_type/date/notes/phone/email, created_at, search_tokens | the advisor |
 | `buildings` | one per advisor and building (`<pid>__<key>`), for the building/city filters and "buildings covered" | the advisor |
-| `direct_leads` | contact_name, company_name, phone, email, notes, lead_date, drop_id | the advisor |
-| `weekly_results` | the weekly belt snapshot: letters and belt per advisor, one per advisor and Monday (the week's start) | the weekly job |
+| `direct_leads` | contact_name, company_name, phone, email, notes, lead_date, drop_id, region_city/region_state (the advisor's own region) | the advisor |
+| `weekly_results` | the weekly belt snapshot: letters and belt per advisor, one per advisor and Monday (the week's start), plus region_city/region_state | the weekly job |
 | `settings/belts` | the three belt thresholds (`yellowMin`, `blueMin`, `greenMin`), master-editable | master (client write, rules-checked) |
 
 ### Security rules (`firestore.rules`)
@@ -464,10 +464,18 @@ data, or Google Play updates it.
   `created_at` and cannot delete. Required fields, lengths and dates are checked, and a responded drop must have a
   response date and a valid phone number or email (or both).
 - A regional account reads within its scope; the national tier and master read every region (city/state accounts
-  are constrained to their `region_city`/`region_state`). Any listed user reads `settings/belts` (the belt
+  are constrained to their `region_city`/`region_state` on drops, buildings, direct leads and weekly results). Any listed user reads `settings/belts` (the belt
   thresholds), but only master writes it, and only a valid set (positive integers, strictly increasing). The
   access list and the weekly belt snapshot (`weekly_results`) are written only by the server; advisors read only
   their own `weekly_results` rows.
+
+### Migration: region fields on leads and weekly results
+Direct leads and weekly results now carry `region_city`/`region_state` (the advisor's city and state), and the
+rules only let a city/state account read rows in its region. Documents created before this change have no region
+fields, so only master and the national tier can read them. Production most likely has none yet; if it does,
+back-fill them once with the Admin SDK (for example in a one-off Node script run with your service account):
+for each `direct_leads` and `weekly_results` document, read `users/{advisor_id}` and set
+`region_city = city`, `region_state = state`. Deploy the new indexes with `npx firebase deploy --only firestore`.
 
 ### Search and filters
 Firestore has no full-text search, so each drop stores `search_tokens`: every prefix (up to 20 characters) of

@@ -2,7 +2,6 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, USE_MOCK, type AccessResult, type DemoAccount } from "@/lib/data";
-import { resetMockData } from "@/lib/data/mock";
 import { accessRedirect, btnCls, errMsg, homeFor, inputCls, Notice, useData } from "@/components/ui";
 import { GoogleMark } from "@/components/google-mark";
 import { BrandLogo } from "@/components/brand-logo";
@@ -127,7 +126,7 @@ export default function LoginPage() {
               Data lives in this browser only.
             </p>
             <DemoCredentials accounts={demo ?? []} onUse={(a) => { setEmail(a.email); setPassword(a.password); setError(null); setInfo(null); }} />
-            <button onClick={() => { resetMockData(); location.reload(); }} className="mt-3 text-xs text-amber-900 underline">Reset demo data</button>
+            <button onClick={() => { if (process.env.NEXT_PUBLIC_USE_MOCK !== "false") void import("@/lib/data/mock").then((m) => { m.resetMockData(); location.reload(); }); }} className="mt-3 text-xs text-amber-900 underline">Reset demo data</button>
           </div>
         )}
       </div>

@@ -15,6 +15,15 @@ import type { WelcomeEmailResult } from "@/lib/data/types";
  * SECURITY: the credentials are read only here and never logged; the password that the email body carries (by
  * design) is never logged either. A failure is caught and reported as a short, non-sensitive reason.
  */
+/** Why the welcome email cannot be sent right now (SMTP or app link not configured), or null when it can. */
+export function welcomeEmailNotReady(): string | null {
+  if (!process.env.SMTP_HOST?.trim() || !process.env.SMTP_USER?.trim() || !process.env.SMTP_PASS) {
+    return "email is not set up (SMTP_HOST, SMTP_USER and SMTP_PASS are required)";
+  }
+  if (!process.env.ADVISOR_APK_URL?.trim()) return "the app download link is not set (ADVISOR_APK_URL)";
+  return null;
+}
+
 export async function sendWelcomeEmail(fields: {
   name: string;
   advisorId: string;

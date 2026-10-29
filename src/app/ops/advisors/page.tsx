@@ -64,6 +64,27 @@ export default function Advisors() {
     setPending(false);
   }
 
+  // Resend the welcome email: the original password is never stored, so this sets a fresh temporary password
+  // and emails it (in the demo, it opens the email preview instead of sending).
+  async function resend(id: string, name: string, email: string) {
+    if (!window.confirm(`Resend the welcome email to ${name}? This sets a new temporary password and emails it to ${email}; their current password stops working.`)) return;
+    setMsg(null);
+    try {
+      const r = await api.resendWelcomeEmail(id);
+      if (r.status === "preview") {
+        setEmailPreview(r.preview);
+        setShowEmail(true);
+        setMsg({ kind: "ok", text: `A new welcome email for ${name} was prepared with a new temporary password — open the preview to see it.` });
+      } else if (r.status === "sent") {
+        setMsg({ kind: "ok", text: `A new welcome email with a new temporary password was sent to ${email}.` });
+      } else {
+        setMsg({ kind: "error", text: `The welcome email could not be sent (${r.reason}). Use Reset password and share the new password with them directly.` });
+      }
+    } catch (err) {
+      setMsg({ kind: "error", text: errMsg(err) });
+    }
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
       <section>
@@ -90,6 +111,11 @@ export default function Advisors() {
                         onClick={() => setResetTarget({ id: a.id, full_name: a.full_name, email: a.email })}>
                         Reset password
                       </button>
+                      {a.active && (
+                        <button className="ml-2 text-xs text-green-700 underline" onClick={() => resend(a.id, a.full_name, a.email)}>
+                          Resend welcome email
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -4,7 +4,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { MIN_PASSWORD_LENGTH, passwordError } from "../../src/lib/validate.ts";
-import { accessFor, canCreateAdvisor, canEditBeltThresholds, canManageRegionalAccounts, canResetPassword, inOpsScope, passwordSignIn } from "../../src/lib/data/authz.ts";
+import { accessFor, canCreateAdvisor, canEditBeltThresholds, canManageRegionalAccounts, canResendWelcome, canResetPassword, canSetUserActive, inOpsScope, passwordSignIn } from "../../src/lib/data/authz.ts";
 
 // A minimal access-list entry; only the fields these functions read need to be set.
 const profile = (over) => ({
@@ -177,5 +177,53 @@ describe("the role hierarchy: who creates and manages what", () => {
     assert.equal(inOpsScope(opsRajkot, rajkot), true);
     assert.equal(inOpsScope(opsRajkot, ahmedabad), false);
     assert.equal(inOpsScope({ role: "operations", scope_type: null, scope_value: null }, rajkot), false);
+  });
+});
+
+describe("canSetUserActive / canResendWelcome: regional reach for deactivate, reactivate and resend welcome", () => {
+  const master = { role: "master", scope_type: null, scope_value: null };
+  const opsNational = { role: "operations", scope_type: "national", scope_value: null };
+  const opsRajkot = { role: "operations", scope_type: "city", scope_value: "Rajkot" };
+  const opsGujarat = { role: "operations", scope_type: "state", scope_value: "Gujarat" };
+  const opsNoScope = { role: "operations", scope_type: null, scope_value: null };
+  const advisorActor = { role: "advisor", scope_type: null, scope_value: null };
+  const advRajkot = { role: "advisor", city: "Rajkot", state: "Gujarat" };
+  const advAhmedabad = { role: "advisor", city: "Ahmedabad", state: "Gujarat" };
+  const advMumbai = { role: "advisor", city: "Mumbai", state: "Maharashtra" };
+  const anOpsUser = { role: "operations", city: null, state: null };
+  const theMaster = { role: "master", city: null, state: null };
+
+  test("master and national reach any advisor", () => {
+    for (const actor of [master, opsNational]) {
+      for (const adv of [advRajkot, advAhmedabad, advMumbai]) {
+        assert.equal(canSetUserActive(actor, adv), true);
+        assert.equal(canResendWelcome(actor, adv), true);
+      }
+    }
+  });
+  test("a city account reaches only its own city's advisors", () => {
+    assert.equal(canSetUserActive(opsRajkot, advRajkot), true);
+    assert.equal(canSetUserActive(opsRajkot, advAhmedabad), false, "another city in the same state");
+    assert.equal(canSetUserActive(opsRajkot, advMumbai), false);
+    assert.equal(canResendWelcome(opsRajkot, advRajkot), true);
+    assert.equal(canResendWelcome(opsRajkot, advAhmedabad), false);
+  });
+  test("a state account reaches only its own state's advisors", () => {
+    assert.equal(canSetUserActive(opsGujarat, advAhmedabad), true);
+    assert.equal(canSetUserActive(opsGujarat, advMumbai), false);
+    assert.equal(canResendWelcome(opsGujarat, advMumbai), false);
+  });
+  test("only master manages operations accounts; nobody manages the master; welcome is advisors only", () => {
+    assert.equal(canSetUserActive(master, anOpsUser), true);
+    assert.equal(canSetUserActive(opsNational, anOpsUser), false);
+    assert.equal(canSetUserActive(opsRajkot, anOpsUser), false);
+    assert.equal(canSetUserActive(master, theMaster), false);
+    assert.equal(canResendWelcome(master, anOpsUser), false);
+  });
+  test("fail closed: no scope or an advisor manages nobody", () => {
+    assert.equal(canSetUserActive(opsNoScope, advRajkot), false);
+    assert.equal(canSetUserActive(advisorActor, advRajkot), false);
+    assert.equal(canResendWelcome(opsNoScope, advRajkot), false);
+    assert.equal(canResendWelcome(advisorActor, advRajkot), false);
   });
 });

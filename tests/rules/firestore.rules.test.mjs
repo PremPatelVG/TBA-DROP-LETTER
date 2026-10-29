@@ -21,7 +21,7 @@ const drop = (advisorId, extra = {}) => ({
 const responded = (extra = {}) => ({ responded: true, response_type: "call", response_date: "2026-09-29", response_notes: "Called back", ...extra });
 const lead = (advisorId, extra = {}) => ({
   advisor_id: advisorId, contact_name: "Mr. Patel", company_name: null, phone: "+91 98765 43210", email: null, notes: null,
-  lead_date: "2026-09-29", drop_id: null, created_at: Timestamp.now(), ...extra,
+  lead_date: "2026-09-29", drop_id: null, region_city: "Rajkot", region_state: "Gujarat", created_at: Timestamp.now(), ...extra,
 });
 
 // Signed-in people. Claims are what the server sets: { role, pid } plus, for advisors, their own { city, state }
@@ -70,12 +70,15 @@ beforeEach(async () => {
       setDoc(doc(db, "drops/d3"), drop("adv3", { city: "Mumbai", region_city: "Mumbai", region_state: "Maharashtra" })),
       setDoc(doc(db, "drops/dgone"), drop("gone")),
       setDoc(doc(db, "direct_leads/l1"), lead("adv1")),
-      setDoc(doc(db, "direct_leads/l2"), lead("adv2")),
+      setDoc(doc(db, "direct_leads/l2"), lead("adv2", { region_city: "Ahmedabad", region_state: "Gujarat" })),
+      setDoc(doc(db, "direct_leads/l3"), lead("adv3", { region_city: "Mumbai", region_state: "Maharashtra" })),
       setDoc(doc(db, "buildings/adv1__shivalik-shilp"), { advisor_id: "adv1", key: "shivalik-shilp", name: "Shivalik Shilp", region_city: "Rajkot", region_state: "Gujarat" }),
       setDoc(doc(db, "buildings/adv2__mondeal"), { advisor_id: "adv2", key: "mondeal", name: "Mondeal Heights", region_city: "Ahmedabad", region_state: "Gujarat" }),
       setDoc(doc(db, "buildings/adv3__bkc"), { advisor_id: "adv3", key: "bkc", name: "Bandra Kurla One", region_city: "Mumbai", region_state: "Maharashtra" }),
       // weekly_results is keyed by advisor and the week's Monday ("<advisor>_<monday>").
-      setDoc(doc(db, "weekly_results/adv1_2026-09-21"), { advisor_id: "adv1", letters: 210, belt: "yellow" }),
+      setDoc(doc(db, "weekly_results/adv1_2026-09-21"), { advisor_id: "adv1", letters: 210, belt: "yellow", region_city: "Rajkot", region_state: "Gujarat" }),
+      setDoc(doc(db, "weekly_results/adv2_2026-09-21"), { advisor_id: "adv2", letters: 90, belt: "red", region_city: "Ahmedabad", region_state: "Gujarat" }),
+      setDoc(doc(db, "weekly_results/adv3_2026-09-21"), { advisor_id: "adv3", letters: 400, belt: "blue", region_city: "Mumbai", region_state: "Maharashtra" }),
       // The stored belt thresholds (master-editable).
       setDoc(doc(db, "settings/belts"), { yellowMin: 200, blueMin: 350, greenMin: 501 }),
     ]);
@@ -359,5 +362,39 @@ describe("buildings (per advisor)", () => {
     await assertFails(setDoc(doc(db, "buildings/adv1__elsewhere"), { advisor_id: "adv1", key: "elsewhere", name: "Elsewhere", region_city: "Ahmedabad", region_state: "Gujarat" }), "stamped with another region");
     await assertSucceeds(getDocs(query(collection(db, "buildings"), where("advisor_id", "==", "adv1"))));
     await assertFails(getDocs(collection(db, "buildings")));
+  });
+});
+
+describe("direct leads and weekly results are region-scoped for regional accounts", () => {
+  for (const coll of ["direct_leads", "weekly_results"]) {
+    const id = (adv) => (coll === "direct_leads" ? { adv1: "l1", adv2: "l2", adv3: "l3" }[adv] : `${adv}_2026-09-21`);
+    test(`${coll}: a city account reads only its own city`, async () => {
+      const db = as.ops(); // Rajkot
+      await assertSucceeds(getDoc(doc(db, `${coll}/${id("adv1")}`)));
+      await assertFails(getDoc(doc(db, `${coll}/${id("adv2")}`)), "another city in the same state");
+      await assertFails(getDoc(doc(db, `${coll}/${id("adv3")}`)), "another state");
+      await assertSucceeds(getDocs(query(collection(db, coll), where("region_city", "==", "Rajkot"))));
+      await assertFails(getDocs(collection(db, coll)), "an unscoped list is refused");
+      await assertFails(getDocs(query(collection(db, coll), where("region_city", "==", "Ahmedabad"))));
+    });
+    test(`${coll}: a state account reads its whole state only`, async () => {
+      const db = as.opsState(); // Gujarat
+      await assertSucceeds(getDoc(doc(db, `${coll}/${id("adv2")}`)));
+      await assertFails(getDoc(doc(db, `${coll}/${id("adv3")}`)));
+      await assertSucceeds(getDocs(query(collection(db, coll), where("region_state", "==", "Gujarat"))));
+      await assertFails(getDocs(collection(db, coll)));
+    });
+    test(`${coll}: national and master read every region`, async () => {
+      for (const db of [as.opsNational(), as.master()]) {
+        await assertSucceeds(getDoc(doc(db, `${coll}/${id("adv3")}`)));
+        await assertSucceeds(getDocs(collection(db, coll)));
+      }
+    });
+  }
+  test("an advisor's new lead must carry their own region", async () => {
+    const db = as.adv1();
+    await assertFails(setDoc(doc(db, "direct_leads/wrong-region"), lead("adv1", { region_city: "Mumbai", region_state: "Maharashtra" })));
+    await assertFails(setDoc(doc(db, "direct_leads/no-region"), lead("adv1", { region_city: null, region_state: null })));
+    await assertFails(updateDoc(doc(db, "direct_leads/l1"), { region_city: "Mumbai" }), "the region is pinned once set");
   });
 });

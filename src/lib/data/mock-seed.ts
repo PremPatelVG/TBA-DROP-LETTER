@@ -14,7 +14,7 @@ export type MockDb = {
 };
 
 /** Bump when the shape or volume of the sample data changes; old browser data is then replaced. */
-export const MOCK_VERSION = 11;
+export const MOCK_VERSION = 12;
 
 /** The password every demo account shares. DEMO ONLY — shown on the sign-in screen so the password flow can be tried. */
 export const DEMO_PASSWORD = "demo1234";
@@ -263,13 +263,17 @@ export function buildSeed(): MockDb {
     passwords,
     beltThresholds: { ...DEFAULT_BELT_THRESHOLDS },
     drops,
-    leads: [
+    leads: ([
       { id: "l-1", advisor_id: "u-adv1", drop_id: respondedRiya?.id ?? null, contact_name: "Mr. Patel", company_name: respondedRiya?.company_name ?? "Shree Traders",
         phone: "+91 98765 43210", email: null, notes: "Called back after the letter; wants a meeting", lead_date: addDays(todayStr, -3), created_at: createdIso(3) },
       { id: "l-2", advisor_id: "u-adv1", drop_id: null, contact_name: "Ms. Joshi", company_name: "Radiant Associates", phone: null, email: "joshi@example.com",
         notes: "Referred by a client at Westgate", lead_date: addDays(todayStr, -6), created_at: createdIso(6) },
       { id: "l-3", advisor_id: "u-adv2", drop_id: null, contact_name: "Mr. Desai", company_name: "Galaxy Diamonds", phone: "+91 99250 11223", email: null,
         notes: "Met at the lift lobby, asked for a call", lead_date: addDays(todayStr, -2), created_at: createdIso(2) },
-    ],
+    ] as Omit<Lead, "region_city" | "region_state">[]).map((l): Lead => {
+      // Each lead is filed in its advisor's region, as createLead does.
+      const a = profiles.find((p) => p.id === l.advisor_id);
+      return { ...l, region_city: a?.city ?? null, region_state: a?.state ?? null };
+    }),
   };
 }

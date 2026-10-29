@@ -34,6 +34,7 @@ import {
   claimAccess,
   createAdvisor as createAdvisorAction,
   createOpsUser as createOpsUserAction,
+  resendWelcomeEmail as resendWelcomeEmailAction,
   resetUserPassword as resetUserPasswordAction,
   setUserActive as setUserActiveAction,
   type ActionResult,
@@ -463,6 +464,9 @@ export const firebaseApi: DataApi = {
   async resetUserPassword(id, newPassword) {
     unwrap(await resetUserPasswordAction(await idToken(), id, newPassword));
   },
+  async resendWelcomeEmail(id) {
+    return unwrap(await resendWelcomeEmailAction(await idToken(), id));
+  },
 
   // ----- drops -----
 
@@ -628,10 +632,11 @@ export const firebaseApi: DataApi = {
     const c = collection(clientDb(), "direct_leads");
     const snap = await getDocs(p.role === "advisor"
       ? query(c, where("advisor_id", "==", p.id), orderBy("lead_date", "desc"), take(200))
-      : query(c, orderBy("lead_date", "desc"), take(200)));
+      // Operations accounts: their region only (the rules require the filter); master and national: every region.
+      : query(c, ...scopeWhere("region_city", "region_state"), orderBy("lead_date", "desc"), take(200)));
     return snap.docs.map((d): Lead => {
       const x = d.data();
-      return { id: d.id, advisor_id: x.advisor_id, contact_name: x.contact_name, company_name: x.company_name ?? null, phone: x.phone ?? null, email: x.email ?? null, notes: x.notes ?? null, lead_date: x.lead_date, drop_id: x.drop_id ?? null, created_at: iso(x.created_at) };
+      return { id: d.id, advisor_id: x.advisor_id, contact_name: x.contact_name, company_name: x.company_name ?? null, phone: x.phone ?? null, email: x.email ?? null, notes: x.notes ?? null, lead_date: x.lead_date, drop_id: x.drop_id ?? null, region_city: x.region_city ?? null, region_state: x.region_state ?? null, created_at: iso(x.created_at) };
     });
   },
   async createLead(input) {
@@ -639,8 +644,10 @@ export const firebaseApi: DataApi = {
     if (p.role !== "advisor") throw new Error("Only advisors log leads.");
     const ref = doc(collection(clientDb(), "direct_leads"));
     const created = Timestamp.now();
-    await settle(setDoc(ref, { ...input, advisor_id: p.id, created_at: created }));
-    return { ...input, id: ref.id, advisor_id: p.id, created_at: created.toDate().toISOString() };
+    // Filed in the advisor's own region (from their claim-backed profile), as drops are; the rules check it.
+    const region = { region_city: p.city, region_state: p.state };
+    await settle(setDoc(ref, { ...input, advisor_id: p.id, ...region, created_at: created }));
+    return { ...input, id: ref.id, advisor_id: p.id, ...region, created_at: created.toDate().toISOString() };
   },
 
   // ----- belt thresholds (settings/belts: any listed user reads; only master writes, per firestore.rules) -----

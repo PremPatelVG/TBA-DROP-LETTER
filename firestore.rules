@@ -53,10 +53,7 @@ service cloud.firestore {
     // 10 digits, optionally +91; spaces and dashes allowed (same as src/lib/validate.ts).
     function isPhone(v) { return v.replace('[ -]', '').matches('^([+]91)?[0-9]{10}$'); }
     function isEmail(v) { return v.matches('^[^ @]+@[^ @]+[.][^ @]+$'); }
-    function ownerAndCreatedUnchanged() {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['advisor_id', 'created_at']);
-    }
-    // Drops/buildings also pin the denormalized region once set: a response cannot move a letter to another region.
+    // Drops, buildings and leads pin the denormalized region once set: a response cannot move a letter to another region.
     function regionUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['advisor_id', 'created_at', 'region_city', 'region_state']);
     }
@@ -147,21 +144,30 @@ service cloud.firestore {
     // ---------- direct leads ----------
 
     function leadKeys() {
-      return ['advisor_id', 'contact_name', 'company_name', 'phone', 'email', 'notes', 'lead_date', 'drop_id', 'created_at'];
+      return ['advisor_id', 'contact_name', 'company_name', 'phone', 'email', 'notes', 'lead_date', 'drop_id',
+              'region_city', 'region_state', 'created_at'];
     }
     function validLead(l) {
       return l.keys().hasAll(leadKeys()) && l.keys().hasOnly(leadKeys())
         && text(l.contact_name, 200) && optText(l.company_name, 200) && optText(l.notes, 2000)
         && optText(l.phone, 30) && optText(l.email, 200) && (filled(l.phone) || filled(l.email))
+        // The creating advisor's own city and state, denormalized for regional scoping (as on drops).
+        && text(l.region_city, 100) && text(l.region_state, 100)
         && isDate(l.lead_date) && l.created_at is timestamp
         && (l.drop_id == null
             || (l.drop_id is string && get(/databases/$(database)/documents/drops/$(l.drop_id)).data.advisor_id == me()));
     }
 
     match /direct_leads/{leadId} {
-      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
-      allow create: if isAdvisor() && request.resource.data.advisor_id == me() && validLead(request.resource.data);
-      allow update: if isAdvisor() && resource.data.advisor_id == me() && ownerAndCreatedUnchanged()
+      // Master every region; a regional account only leads filed in its scope; advisors their own.
+      allow read: if isMaster()
+        || (isOpsOnly() && inScope(resource.data.get('region_city', null), resource.data.get('region_state', null)))
+        || (isAdvisor() && resource.data.advisor_id == me());
+      allow create: if isAdvisor() && request.resource.data.advisor_id == me()
+        && request.resource.data.region_city == request.auth.token.get('city', null)
+        && request.resource.data.region_state == request.auth.token.get('state', null)
+        && validLead(request.resource.data);
+      allow update: if isAdvisor() && resource.data.advisor_id == me() && regionUnchanged()
         && validLead(request.resource.data);
       allow delete: if false;
     }
@@ -183,9 +189,12 @@ service cloud.firestore {
 
     // ---------- weekly belt snapshot ----------
 
-    // One record per advisor and competition week ("<advisor>_<monday>"), written only by the scheduled job.
+    // One record per advisor and competition week ("<advisor>_<monday>"), written only by the scheduled job,
+    // which files it in the advisor's region (region_city/region_state). A regional account reads only its scope.
     match /weekly_results/{resultId} {
-      allow read: if isAdmin() || (isAdvisor() && resource.data.advisor_id == me());
+      allow read: if isMaster()
+        || (isOpsOnly() && inScope(resource.data.get('region_city', null), resource.data.get('region_state', null)))
+        || (isAdvisor() && resource.data.advisor_id == me());
       allow write: if false;
     }
   }

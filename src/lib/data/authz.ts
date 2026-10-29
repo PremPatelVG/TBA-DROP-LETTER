@@ -89,3 +89,21 @@ export function canManageRegionalAccounts(actor: Pick<Profile, "role">): boolean
 export function canEditBeltThresholds(actor: Pick<Profile, "role">): boolean {
   return actor.role === "master";
 }
+
+/**
+ * Whether `actor` may deactivate or reactivate `target`. Same reach as {@link canResetPassword}: the master manages
+ * any regional account or advisor; a regional account manages ONLY advisors inside its own scope (national: any
+ * advisor). Fail closed: an operations account with no usable scope manages nobody. Self-deactivation is refused
+ * separately by the callers.
+ */
+export function canSetUserActive(actor: Actor, target: Pick<Profile, "role" | "city" | "state">): boolean {
+  return canResetPassword(actor, target);
+}
+
+/**
+ * Whether `actor` may resend `target` the advisor welcome email (which sets a fresh temporary password). Only for
+ * advisors, with the same regional reach as {@link canResetPassword}.
+ */
+export function canResendWelcome(actor: Actor, target: Pick<Profile, "role" | "city" | "state">): boolean {
+  return target.role === "advisor" && canResetPassword(actor, target);
+}
