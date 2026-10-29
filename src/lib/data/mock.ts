@@ -5,7 +5,7 @@ import { beltThresholdsError, DEFAULT_BELT_THRESHOLDS } from "@/lib/belts";
 import { regionalTitle, scopeLabel } from "@/lib/labels";
 import { buildWelcomeEmail, DEFAULT_MAIL_FROM } from "@/lib/email";
 import { buildSeed, DEMO_PASSWORD, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
-import { accessFor, canCreateAdvisor, canResendWelcome, canResetPassword, canSetUserActive, passwordSignIn } from "./authz";
+import { accessFor, canCreateAdvisor, canManageRegionalAccount, canManageRegionalAccounts, canResendWelcome, canResetPassword, canSetUserActive, passwordSignIn } from "./authz";
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile, type WelcomeEmailPreview, type WelcomeEmailResult } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
@@ -133,7 +133,7 @@ export const mockApi: DataApi = {
     const roleNote = (p: Profile) =>
       p.role === "advisor" ? `Advisor ${p.advisor_code} · ${p.city ?? ""}`
       : p.role === "master" ? "Master · all regions · edits belt thresholds"
-      : p.scope_type === "national" ? "TBA India Ops · all regions · no threshold editor"
+      : p.scope_type === "national" ? "TBA India Ops · all regions · adds state/city accounts · no threshold editor"
       : `${regionalTitle(p.scope_type, p.scope_value)} · ${scopeLabel(p.scope_type, p.scope_value)}`;
     const db = load();
     const people = db.profiles.map((p) => ({
@@ -193,11 +193,17 @@ export const mockApi: DataApi = {
     return wait({ profile: p, welcomeEmail });
   },
   async listOpsUsers() {
-    requireMaster();
-    return wait(load().profiles.filter((p) => p.role === "operations").sort((a, b) => a.full_name.localeCompare(b.full_name)));
+    const actor = requireOps();
+    if (!canManageRegionalAccounts(actor)) throw new Error("You are not allowed to view regional accounts.");
+    // Imitates the rules: master sees every regional account; national sees the state and city accounts only.
+    return wait(load().profiles.filter((p) => p.role === "operations" && canManageRegionalAccount(actor, p.scope_type)).sort((a, b) => a.full_name.localeCompare(b.full_name)));
   },
   async createOpsUser(input) {
-    requireMaster();
+    const actor = requireOps();
+    if (!canManageRegionalAccount(actor, input.scope_type)) {
+      throw new Error(actor.role === "operations" && actor.scope_type === "national"
+        ? "TBA India Ops can add state and city accounts only." : "You are not allowed to add regional accounts.");
+    }
     const db = load();
     const email = cleanEmail(input.email);
     const pwErr = passwordError(input.password);
@@ -225,7 +231,7 @@ export const mockApi: DataApi = {
     if (target.id === actor.id) throw new Error("You cannot deactivate yourself.");
     // Same authorisation as the server: master → anyone they manage; operations → advisors in their region only.
     if (!canSetUserActive(actor, target)) {
-      throw new Error(target.role === "advisor" ? "You can only manage advisors in your own region." : "Only master can manage operations accounts.");
+      throw new Error(target.role === "advisor" ? "You can only manage advisors in your own region." : "You are not allowed to manage this account.");
     }
     target.active = active;
     save();

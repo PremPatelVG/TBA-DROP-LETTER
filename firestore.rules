@@ -60,15 +60,25 @@ service cloud.firestore {
 
     // ---------- access list ----------
 
+    // The national account (TBA India Ops) manages the state and city regional accounts (writes go through the
+    // server actions; see canManageRegionalAccount in src/lib/data/authz.ts), so it may read those entries —
+    // never master's or another national account's.
+    function nationalReadsRegional() {
+      return isOpsOnly() && scopeType() == 'national'
+        && resource.data.role == 'operations' && resource.data.get('scope_type', null) in ['state', 'city'];
+    }
+
     match /users/{userId} {
       // Your own entry; master reads everyone; a scoped operations account reads only advisors in its region.
       allow get: if listed() && (
         userId == me()
         || isMaster()
         || (isOpsOnly() && resource.data.role == 'advisor' && inScope(resource.data.get('city', null), resource.data.get('state', null)))
+        || nationalReadsRegional()
       );
       allow list: if isMaster()
-        || (isOpsOnly() && resource.data.role == 'advisor' && inScope(resource.data.get('city', null), resource.data.get('state', null)));
+        || (isOpsOnly() && resource.data.role == 'advisor' && inScope(resource.data.get('city', null), resource.data.get('state', null)))
+        || nationalReadsRegional();
       allow write: if false;
     }
 

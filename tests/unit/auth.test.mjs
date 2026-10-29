@@ -4,7 +4,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { MIN_PASSWORD_LENGTH, passwordError } from "../../src/lib/validate.ts";
-import { accessFor, canCreateAdvisor, canEditBeltThresholds, canManageRegionalAccounts, canResendWelcome, canResetPassword, canSetUserActive, inOpsScope, passwordSignIn } from "../../src/lib/data/authz.ts";
+import { accessFor, canCreateAdvisor, canEditBeltThresholds, canManageRegionalAccount, canManageRegionalAccounts, manageableRegionalTiers, canResendWelcome, canResetPassword, canSetUserActive, inOpsScope, passwordSignIn } from "../../src/lib/data/authz.ts";
 
 // A minimal access-list entry; only the fields these functions read need to be set.
 const profile = (over) => ({
@@ -85,7 +85,7 @@ describe("canResetPassword: who an admin may reset", () => {
   const advRajkot = { role: "advisor", city: "Rajkot", state: "Gujarat" };
   const advAhmedabad = { role: "advisor", city: "Ahmedabad", state: "Gujarat" };
   const advMumbai = { role: "advisor", city: "Mumbai", state: "Maharashtra" };
-  const anOpsUser = { role: "operations", city: null, state: null };
+  const anOpsUser = { role: "operations", city: null, state: null, scope_type: "national" };
   const theMaster = { role: "master", city: null, state: null };
 
   test("master can reset any regional account or advisor, but not another master", () => {
@@ -144,11 +144,15 @@ describe("the role hierarchy: who creates and manages what", () => {
   const ahmedabad = { city: "Ahmedabad", state: "Gujarat" };
   const mumbai = { city: "Mumbai", state: "Maharashtra" };
 
-  test("only master may create, edit or deactivate regional accounts", () => {
+  test("the Regional accounts screen: master and the national account only", () => {
     assert.equal(canManageRegionalAccounts(master), true);
-    assert.equal(canManageRegionalAccounts(opsNational), false, "even national is not master");
+    assert.equal(canManageRegionalAccounts(opsNational), true, "TBA India Ops manages state/city accounts");
     assert.equal(canManageRegionalAccounts(opsGujarat), false);
+    assert.equal(canManageRegionalAccounts(opsRajkot), false);
     assert.equal(canManageRegionalAccounts(advisorActor), false);
+    assert.deepEqual(manageableRegionalTiers(master), ["national", "state", "city"]);
+    assert.deepEqual(manageableRegionalTiers(opsNational), ["state", "city"]);
+    assert.deepEqual(manageableRegionalTiers(opsGujarat), []);
   });
 
   test("only master may edit the belt thresholds", () => {
@@ -190,7 +194,7 @@ describe("canSetUserActive / canResendWelcome: regional reach for deactivate, re
   const advRajkot = { role: "advisor", city: "Rajkot", state: "Gujarat" };
   const advAhmedabad = { role: "advisor", city: "Ahmedabad", state: "Gujarat" };
   const advMumbai = { role: "advisor", city: "Mumbai", state: "Maharashtra" };
-  const anOpsUser = { role: "operations", city: null, state: null };
+  const anOpsUser = { role: "operations", city: null, state: null, scope_type: "national" };
   const theMaster = { role: "master", city: null, state: null };
 
   test("master and national reach any advisor", () => {
@@ -225,5 +229,59 @@ describe("canSetUserActive / canResendWelcome: regional reach for deactivate, re
     assert.equal(canSetUserActive(advisorActor, advRajkot), false);
     assert.equal(canResendWelcome(opsNoScope, advRajkot), false);
     assert.equal(canResendWelcome(advisorActor, advRajkot), false);
+  });
+});
+
+describe("canManageRegionalAccount: who creates/edits/deactivates/resets regional accounts", () => {
+  const master = { role: "master", scope_type: null, scope_value: null };
+  const opsNational = { role: "operations", scope_type: "national", scope_value: null };
+  const opsGujarat = { role: "operations", scope_type: "state", scope_value: "Gujarat" };
+  const opsRajkot = { role: "operations", scope_type: "city", scope_value: "Rajkot" };
+  const advisorActor = { role: "advisor", scope_type: null, scope_value: null };
+  const natAcct = { role: "operations", city: null, state: null, scope_type: "national" };
+  const stateAcct = { role: "operations", city: null, state: null, scope_type: "state" };
+  const cityAcct = { role: "operations", city: null, state: null, scope_type: "city" };
+  const theMaster = { role: "master", city: null, state: null, scope_type: null };
+
+  test("master manages every tier, unchanged", () => {
+    for (const t of ["national", "state", "city"]) assert.equal(canManageRegionalAccount(master, t), true, t);
+    for (const t of [natAcct, stateAcct, cityAcct]) {
+      assert.equal(canResetPassword(master, t), true);
+      assert.equal(canSetUserActive(master, t), true);
+    }
+    assert.equal(canResetPassword(master, theMaster), false);
+  });
+  test("national (TBA India Ops) creates and manages state and city accounts", () => {
+    assert.equal(canManageRegionalAccount(opsNational, "state"), true);
+    assert.equal(canManageRegionalAccount(opsNational, "city"), true);
+    for (const t of [stateAcct, cityAcct]) {
+      assert.equal(canResetPassword(opsNational, t), true);
+      assert.equal(canSetUserActive(opsNational, t), true);
+      assert.equal(canResendWelcome(opsNational, t), false, "welcome email is for advisors only");
+    }
+  });
+  test("national cannot manage national or master accounts, nor edit belt thresholds", () => {
+    assert.equal(canManageRegionalAccount(opsNational, "national"), false);
+    assert.equal(canResetPassword(opsNational, natAcct), false);
+    assert.equal(canSetUserActive(opsNational, natAcct), false);
+    assert.equal(canResetPassword(opsNational, theMaster), false);
+    assert.equal(canSetUserActive(opsNational, theMaster), false);
+    assert.equal(canEditBeltThresholds(opsNational), false);
+  });
+  test("state and city accounts and advisors cannot manage regional accounts", () => {
+    for (const actor of [opsGujarat, opsRajkot, advisorActor]) {
+      for (const t of ["national", "state", "city"]) assert.equal(canManageRegionalAccount(actor, t), false);
+      for (const t of [natAcct, stateAcct, cityAcct, theMaster]) {
+        assert.equal(canResetPassword(actor, t), false);
+        assert.equal(canSetUserActive(actor, t), false);
+      }
+    }
+  });
+  test("fail closed: an unknown or missing tier is refused for everyone", () => {
+    for (const actor of [master, opsNational]) {
+      for (const t of [null, undefined, "", "global", "master"]) assert.equal(canManageRegionalAccount(actor, t), false, String(t));
+      assert.equal(canResetPassword(actor, { role: "operations", city: null, state: null }), false);
+    }
+    assert.equal(canManageRegionalAccount({ role: "operations", scope_type: null }, "city"), false);
   });
 });

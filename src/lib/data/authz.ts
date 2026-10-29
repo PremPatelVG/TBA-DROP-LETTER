@@ -52,15 +52,18 @@ export function inOpsScope(actor: Actor, region: Region): boolean {
   return false;
 }
 
+type Target = Pick<Profile, "role" | "city" | "state"> & { scope_type?: Profile["scope_type"] };
+
 /**
- * Whether `actor` may reset `target`'s password. The master can reset any regional account or advisor; a regional
- * account can reset ONLY advisors inside its own scope (national: any advisor; state: advisors in its state;
- * city: advisors in its city). A regional account can never reset another regional account or the master.
- * Advisors cannot reset anyone. The server action and the mock both gate on this before changing a password; the
- * Firestore security rules are unaffected (the auth method does not change roles or regions).
+ * Whether `actor` may reset `target`'s password. The master can reset any regional account or advisor. A regional
+ * account can reset advisors inside its own scope (national: any advisor; state: its state; city: its city), and
+ * the NATIONAL account (TBA India Ops) can also reset state and city regional accounts — never another national
+ * account or the master (see {@link canManageRegionalAccount}). Advisors cannot reset anyone. The server action
+ * and the mock both gate on this before changing a password.
  */
-export function canResetPassword(actor: Actor, target: Pick<Profile, "role" | "city" | "state">): boolean {
-  if (actor.role === "master") return target.role === "advisor" || target.role === "operations";
+export function canResetPassword(actor: Actor, target: Target): boolean {
+  if (target.role === "operations") return canManageRegionalAccount(actor, target.scope_type ?? null);
+  if (actor.role === "master") return target.role === "advisor";
   if (actor.role === "operations") {
     if (target.role !== "advisor") return false;
     return inOpsScope(actor, { city: target.city, state: target.state });
@@ -80,9 +83,30 @@ export function canCreateAdvisor(actor: Actor, region: Region): boolean {
   return false;
 }
 
-/** Only the master may create, edit or deactivate the regional (operations) accounts. */
-export function canManageRegionalAccounts(actor: Pick<Profile, "role">): boolean {
-  return actor.role === "master";
+/**
+ * The single source of truth for managing regional (operations) accounts: whether `actor` may create, edit,
+ * deactivate/reactivate or reset the password of a regional account of tier `targetScopeType`.
+ * - master: any tier (national, state, city);
+ * - the national account (TBA India Ops): state and city accounts only — never another national account;
+ * - state/city accounts and advisors: nothing.
+ * Master accounts are never regional accounts and are not managed through this. Fail closed: an unknown or
+ * missing tier is refused for everyone, master included.
+ */
+export function canManageRegionalAccount(actor: Pick<Profile, "role" | "scope_type">, targetScopeType: string | null | undefined): boolean {
+  if (targetScopeType !== "national" && targetScopeType !== "state" && targetScopeType !== "city") return false;
+  if (actor.role === "master") return true;
+  if (actor.role === "operations" && actor.scope_type === "national") return targetScopeType === "state" || targetScopeType === "city";
+  return false;
+}
+
+/** The regional-account tiers `actor` may create (empty ⇒ no access to the Regional accounts screen). */
+export function manageableRegionalTiers(actor: Pick<Profile, "role" | "scope_type">): ("national" | "state" | "city")[] {
+  return (["national", "state", "city"] as const).filter((t) => canManageRegionalAccount(actor, t));
+}
+
+/** Whether `actor` may open the Regional accounts screen at all: master, or the national account. */
+export function canManageRegionalAccounts(actor: Pick<Profile, "role" | "scope_type">): boolean {
+  return manageableRegionalTiers(actor).length > 0;
 }
 
 /** Only the master may view or edit the belt thresholds. */
@@ -92,11 +116,11 @@ export function canEditBeltThresholds(actor: Pick<Profile, "role">): boolean {
 
 /**
  * Whether `actor` may deactivate or reactivate `target`. Same reach as {@link canResetPassword}: the master manages
- * any regional account or advisor; a regional account manages ONLY advisors inside its own scope (national: any
- * advisor). Fail closed: an operations account with no usable scope manages nobody. Self-deactivation is refused
+ * any regional account or advisor; national also manages state/city accounts; a regional account otherwise
+ * manages ONLY advisors inside its own scope (national: any advisor). Fail closed: an operations account with no usable scope manages nobody. Self-deactivation is refused
  * separately by the callers.
  */
-export function canSetUserActive(actor: Actor, target: Pick<Profile, "role" | "city" | "state">): boolean {
+export function canSetUserActive(actor: Actor, target: Target): boolean {
   return canResetPassword(actor, target);
 }
 
@@ -104,6 +128,6 @@ export function canSetUserActive(actor: Actor, target: Pick<Profile, "role" | "c
  * Whether `actor` may resend `target` the advisor welcome email (which sets a fresh temporary password). Only for
  * advisors, with the same regional reach as {@link canResetPassword}.
  */
-export function canResendWelcome(actor: Actor, target: Pick<Profile, "role" | "city" | "state">): boolean {
+export function canResendWelcome(actor: Actor, target: Target): boolean {
   return target.role === "advisor" && canResetPassword(actor, target);
 }

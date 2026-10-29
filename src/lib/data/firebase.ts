@@ -452,7 +452,11 @@ export const firebaseApi: DataApi = {
     return unwrap(await createAdvisorAction(await idToken(), input));
   },
   async listOpsUsers() {
-    const snap = await getDocs(query(collection(clientDb(), "users"), where("role", "==", "operations")));
+    // Master lists every regional account; the national account (TBA India Ops) only the state and city ones —
+    // the query must say so, as the security rules allow nothing wider.
+    const viewer = profile();
+    const tiers = viewer.role === "master" ? [] : [where("scope_type", "in", ["state", "city"])];
+    const snap = await getDocs(query(collection(clientDb(), "users"), where("role", "==", "operations"), ...tiers));
     return snap.docs.map(toProfile).sort((a, b) => a.full_name.localeCompare(b.full_name));
   },
   async createOpsUser(input) {

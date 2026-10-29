@@ -10,7 +10,7 @@ import { FieldValue, Timestamp, type DocumentReference, type DocumentSnapshot } 
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { isEmail, passwordError } from "@/lib/validate";
-import { canCreateAdvisor, canResendWelcome, canResetPassword, canSetUserActive } from "@/lib/data/authz";
+import { canCreateAdvisor, canManageRegionalAccount, canResendWelcome, canResetPassword, canSetUserActive } from "@/lib/data/authz";
 import { sendWelcomeEmail, welcomeEmailNotReady } from "@/lib/email.server";
 import { randomBytes } from "node:crypto";
 import type { AdvisorCreated, NewAdvisor, WelcomeEmailResult, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
@@ -268,13 +268,18 @@ async function linkSignIn(ref: DocumentReference, email: string, pw: string, dis
 }
 
 /**
- * Master only: add a regional (operations) account to the access list. One role, three tiers — national
- * ("TBA India Ops", every region), a whole state, or a single city. Only the master creates these; each regional
- * account then creates advisors within its own scope. national carries no region (scope_value is null).
+ * Add a regional (operations) account to the access list. One role, three tiers — national ("TBA India Ops",
+ * every region), a whole state, or a single city. The master creates any tier; the national account creates
+ * state and city accounts only ({@link canManageRegionalAccount}). Each regional account then creates advisors
+ * within its own scope. national carries no region (scope_value is null).
  */
 export async function createOpsUser(idToken: string, input: NewOpsUser): Promise<ActionResult<Profile>> {
   return run("add the regional account", async () => {
-    const me = await caller(idToken, ["master"]);
+    const me = await caller(idToken, ["operations", "master"]);
+    if (!canManageRegionalAccount(me, input.scope_type)) {
+      throw new Refusal(me.role === "operations" && me.scope_type === "national"
+        ? "TBA India Ops can add state and city accounts only." : "You are not allowed to add regional accounts.");
+    }
     const full_name = text(input.full_name, "Name", 100);
     const email = googleEmail(input.email);
     const pw = password(input.password);
@@ -298,8 +303,8 @@ export async function createOpsUser(idToken: string, input: NewOpsUser): Promise
 }
 
 /**
- * Deactivate or reactivate someone. Master: any advisor or operations account. Operations: advisors in its own
- * region only (national: any advisor), enforced by {@link canSetUserActive}.
+ * Deactivate or reactivate someone. Master: any advisor or operations account. National: any advisor plus state
+ * and city accounts. Other operations accounts: advisors in their own region only, enforced by {@link canSetUserActive}.
  * Deactivating also disables their Firebase account and revokes their sessions; the security rules
  * already refuse every read and write from an inactive entry.
  */
@@ -312,9 +317,9 @@ export async function setUserActive(idToken: string, id: string, active: boolean
     const t = snap.data();
     if (!t) throw new Refusal("User not found.");
     // Master: any advisor or regional account. A regional account: advisors inside its own scope only (fail closed).
-    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null };
+    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null, scope_type: (t.scope_type ?? null) as Profile["scope_type"] };
     if (!canSetUserActive(me, target)) {
-      throw new Refusal(t.role === "advisor" ? "You can only manage advisors in your own region." : "Only master can manage operations accounts.");
+      throw new Refusal(t.role === "advisor" ? "You can only manage advisors in your own region." : "You are not allowed to manage this account.");
     }
     await ref.update({ active, updated_at: FieldValue.serverTimestamp(), updated_by: me.pid });
     if (t.uid) {
@@ -339,7 +344,7 @@ export async function resetUserPassword(idToken: string, id: string, newPassword
     const ref = adminDb().collection("users").doc(id);
     const t = (await ref.get()).data();
     if (!t) throw new Refusal("User not found.");
-    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null };
+    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null, scope_type: (t.scope_type ?? null) as Profile["scope_type"] };
     if (!canResetPassword(me, target)) throw new Refusal("You are not allowed to reset this user's password.");
     const auth = adminAuth();
     let uid: string | null = typeof t.uid === "string" ? t.uid : null;
@@ -367,7 +372,7 @@ export async function resendWelcomeEmail(idToken: string, id: string): Promise<A
     const ref = adminDb().collection("users").doc(id);
     const t = (await ref.get()).data();
     if (!t) throw new Refusal("User not found.");
-    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null };
+    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null, scope_type: (t.scope_type ?? null) as Profile["scope_type"] };
     if (!canResendWelcome(me, target)) throw new Refusal("You are not allowed to resend this advisor's welcome email.");
     if (t.active !== true) throw new Refusal("Reactivate the advisor before resending their welcome email.");
     const notReady = welcomeEmailNotReady();

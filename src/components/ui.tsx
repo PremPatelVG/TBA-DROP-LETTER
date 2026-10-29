@@ -7,6 +7,7 @@ import { ymd } from "@/lib/stats";
 import { scopeLabel } from "@/lib/labels";
 import { registerAdvisorServiceWorker } from "@/lib/advisor-offline";
 import { BrandLogo } from "@/components/brand-logo";
+import { canManageRegionalAccounts } from "@/lib/data/authz";
 
 export const inputCls = "mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-200";
 export const btnCls = "inline-flex items-center justify-center rounded-md bg-green-700 px-4 py-2.5 font-medium text-white hover:bg-green-800 disabled:opacity-50";
@@ -155,7 +156,9 @@ export function regionLabel(user: Pick<Profile, "role" | "scope_type" | "scope_v
 function AdminShell({ user, children }: { user: Profile; children: React.ReactNode }) {
   const path = usePathname();
   const signOut = useSignOut();
-  const nav = user.role === "master" ? [...ADMIN_NAV, ...MASTER_NAV] : ADMIN_NAV;
+  // Master: its own screens. The national account (TBA India Ops) also gets Regional accounts (state/city only).
+  const nav = user.role === "master" ? [...ADMIN_NAV, ...MASTER_NAV]
+    : canManageRegionalAccounts(user) ? [...ADMIN_NAV, { href: "/ops/regional", label: "Regional accounts" }] : ADMIN_NAV;
   const region = regionLabel(user);
   return (
     <div className="min-h-dvh bg-slate-50">

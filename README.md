@@ -22,7 +22,7 @@ npm run dev      # http://localhost:3000
 Demo mode is on by default (`NEXT_PUBLIC_USE_MOCK` unset or `true`). You can sign in with an email and the shared
 demo password (shown on the sign-in screen, `demo1234`), or "Sign in with Google" opens a demo account chooser:
 **Master Admin** (sees everything, manages the regional accounts and edits the belt thresholds), **TBA India Ops**
-(national — sees everything, but no threshold editor), a **State/City president** (e.g. Gujarat or Rajkot), an
+(national — sees everything and adds/manages state and city accounts, but no threshold editor), a **State/City president** (e.g. Gujarat or Rajkot), an
 advisor, or **Visitor**, who is not on the access list and is refused.
 Sample data (3 advisors, about 2,700 letters: a small pilot from April, then a ramp-up over the last two months,
 so this week's progress shows roughly 60-180 letters) is stored in the browser's localStorage; "Reset demo data"
@@ -35,9 +35,13 @@ on the login screen restores it.
   - **state** (e.g. "Gujarat President") — every city in that one state.
   - **city** (e.g. "Rajkot President") — that one city only.
   Each regional account adds advisors within its own scope (national: anywhere) and resets those advisors'
-  passwords. A regional account cannot create other regional accounts and cannot edit the belt thresholds.
-- `master`: everything a regional account can do, plus `/master` to create, deactivate and reactivate the regional
-  accounts, and `/master/belts` to edit the belt thresholds. Only master can do those two things.
+  passwords. The **national** account also has `/ops/regional` (Regional accounts) to create, deactivate,
+  reactivate and reset the password of **state and city** accounts — never another national account or a master
+  account. State and city accounts cannot manage any regional account. No regional account edits the belt thresholds.
+- `master`: everything a regional account can do, plus `/master` to create, deactivate, reactivate and reset
+  regional accounts of every tier (national, state, city), and `/master/belts` to edit the belt thresholds (master only).
+  The rights are defined once in `canManageRegionalAccount` (`src/lib/data/authz.ts`) and enforced by the server
+  actions, the demo data layer and (for reading the accounts) the Firestore rules.
 
 Everyone signs in with an email and password or with Google (same email either way). Only people added in advance
 can use the app: master adds the regional accounts, each regional account (or master) adds advisors, each with
@@ -65,6 +69,7 @@ Operations and master (desktop web admin):
   company name and building name, responder phone and email columns, and Excel export of the filtered rows
   (SheetJS, in the browser).
 - `/ops/advisors` add advisors (name, advisor ID, region, Google email), deactivate or reactivate them.
+- `/ops/regional` (national account only) the state and city regional accounts.
 - `/master` (master only) the regional accounts (national / state / city), and `/master/belts` the belt thresholds.
 
 Ranking: advisors are ranked only by the **belt** system, from their entry count in the current competition week —
@@ -219,7 +224,7 @@ If you later add your own domain, repeat 2-5 with that domain.
 ### 10. Sign in and add people
 1. Open the app's address and sign in with the master account (Google, or the email and password if you set one
    in step 8).
-2. **Regional accounts** screen (`/master`, master only): add each regional account — its tier (**TBA India Ops**
+2. **Regional accounts** screen (`/master`, master; or `/ops/regional` for TBA India Ops, state and city tiers only): add each regional account — its tier (**TBA India Ops**
    national, a **State president**, or a **City president**), name, the email they will sign in with, and an
    **initial password** of at least 8 characters. Optionally open **Belt thresholds** (`/master/belts`) to adjust
    the belt boundaries (positive whole numbers, increasing); the defaults keep the current behaviour.
@@ -231,8 +236,9 @@ Everyone can then sign in with that email and password, or with Google using the
 their initial password; they (or you) can change it afterwards:
 - **They** can use **Forgot password?** on the sign-in screen to get a reset link by email.
 - **You** can reset it for them: on the **Advisors** screen (for advisors) or the **Regional accounts** screen
-  (master, for regional accounts), click **Reset password** next to the person and set a new one. A regional
-  account can reset only advisors in its own scope (national: any advisor); the master can reset anyone.
+  (master, or TBA India Ops for state/city accounts), click **Reset password** next to the person and set a new one.
+  A regional account can reset advisors in its own scope (national: any advisor, plus state and city accounts);
+  the master can reset anyone except another master.
 
 To remove someone, click **Deactivate** next to them: they lose access at once and are signed out
 (**Reactivate** undoes it).
@@ -438,8 +444,8 @@ data, or Google Play updates it.
   never written to Firestore or the logs.
   `resetUserPassword` sets a new password (`admin.auth().updateUser`) for a user the caller manages — the master
   for any regional account or advisor, a regional account only for advisors in its own scope (national: any
-  advisor), enforced by `canResetPassword` in `src/lib/data/authz.ts` (the single source of truth for the role
-  hierarchy, alongside `canCreateAdvisor`, `canManageRegionalAccounts` and `canEditBeltThresholds`). People can also reset their own password by email
+  advisor, plus state and city accounts), enforced by `canResetPassword` in `src/lib/data/authz.ts` (the single source of truth for the role
+  hierarchy, alongside `canCreateAdvisor`, `canManageRegionalAccount` and `canEditBeltThresholds`). People can also reset their own password by email
   (`sendPasswordResetEmail`, the "Forgot password?" link). Every server action verifies the caller's ID token
   (including revocation) and role again, against the `users` entry.
 - Deactivating disables the Auth account and revokes its refresh tokens; the security rules also re-read the
@@ -463,6 +469,8 @@ data, or Google Play updates it.
 - Advisors create, read and update only their own drops, leads and buildings; they cannot change `advisor_id` or
   `created_at` and cannot delete. Required fields, lengths and dates are checked, and a responded drop must have a
   response date and a valid phone number or email (or both).
+- `users`: master reads every entry; the national tier also reads the state and city regional accounts (the
+  query must filter `scope_type in [state, city]`), never master or national entries; writes are server-only.
 - A regional account reads within its scope; the national tier and master read every region (city/state accounts
   are constrained to their `region_city`/`region_state` on drops, buildings, direct leads and weekly results). Any listed user reads `settings/belts` (the belt
   thresholds), but only master writes it, and only a valid set (positive integers, strictly increasing). The

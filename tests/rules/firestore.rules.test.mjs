@@ -207,11 +207,14 @@ describe("operations and master: reads, and no writes to drops or leads", () => 
       await assertFails(setDoc(doc(db, "direct_leads/new"), lead("adv1")));
     });
   }
-  test("only master sees operations accounts", async () => {
+  test("only master (all) and national (state/city) see operations accounts", async () => {
     await assertSucceeds(getDocs(query(collection(as.master(), "users"), where("role", "==", "operations"))));
     await assertFails(getDocs(query(collection(as.ops(), "users"), where("role", "==", "operations"))));
     await assertFails(getDocs(collection(as.ops(), "users")));
     await assertFails(getDoc(doc(as.ops(), "users/master")));
+    await assertFails(getDoc(doc(as.ops(), "users/ops-state")), "a city account cannot read other regional accounts");
+    await assertFails(getDoc(doc(as.opsState(), "users/ops")), "nor can a state account");
+    await assertFails(getDocs(query(collection(as.opsState(), "users"), where("role", "==", "operations"), where("scope_type", "in", ["state", "city"]))));
     await assertSucceeds(getDoc(doc(as.ops(), "users/ops")), "their own entry");
   });
   test("advisors read their own entry only", async () => {
@@ -292,12 +295,17 @@ describe("the national tier (TBA India Ops) sees every region", () => {
     await assertSucceeds(getDocs(collection(db, "buildings")), "every building, unscoped");
     for (const id of ["adv1__shivalik-shilp", "adv2__mondeal", "adv3__bkc"]) await assertSucceeds(getDoc(doc(db, `buildings/${id}`)));
   });
-  test("a national account is NOT master: no other regional accounts, no access-list writes", async () => {
+  test("a national account is NOT master: reads state/city accounts only, never master or national, no writes", async () => {
     const db = as.opsNational();
     await assertSucceeds(getDoc(doc(db, "users/ops-nat")), "its own entry");
     await assertFails(getDoc(doc(db, "users/master")), "not the master's entry");
-    await assertFails(getDoc(doc(db, "users/ops")), "nor another regional account");
-    await assertFails(getDocs(query(collection(db, "users"), where("role", "==", "operations"))), "cannot list regional accounts");
+    await assertSucceeds(getDoc(doc(db, "users/ops")), "a city account it manages");
+    await assertSucceeds(getDoc(doc(db, "users/ops-state")), "a state account it manages");
+    await assertSucceeds(getDocs(query(collection(db, "users"), where("role", "==", "operations"), where("scope_type", "in", ["state", "city"]))),
+      "lists the state and city accounts");
+    await assertFails(getDocs(query(collection(db, "users"), where("role", "==", "operations"))), "the unfiltered list would include national accounts");
+    await assertFails(getDocs(query(collection(db, "users"), where("role", "==", "operations"), where("scope_type", "==", "national"))));
+    await assertFails(setDoc(doc(db, "users/ops"), person("operations", "uid-ops", { scope_type: "city", scope_value: "Surat" })), "writes are server-only");
     await assertFails(setDoc(doc(db, "users/new-ops"), person("operations", "uid-x")), "the access list is server-only");
   });
   test("a national account still cannot write drops or leads", async () => {
