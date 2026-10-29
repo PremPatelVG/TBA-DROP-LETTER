@@ -125,9 +125,12 @@ export function canSetUserActive(actor: Actor, target: Target): boolean {
 }
 
 /**
- * Whether `actor` may resend `target` the advisor welcome email (which sets a fresh temporary password). Only for
- * advisors, with the same regional reach as {@link canResetPassword}.
+ * Whether `actor` may resend `target` the welcome email (which sets a fresh temporary password). Advisors: the same
+ * regional reach as {@link canResetPassword}. Regional accounts: {@link canManageRegionalAccount} (master: national,
+ * state and city; national: state and city). Never the master account.
  */
 export function canResendWelcome(actor: Actor, target: Target): boolean {
-  return target.role === "advisor" && canResetPassword(actor, target);
+  if (target.role === "advisor") return canResetPassword(actor, target);
+  if (target.role === "operations") return canManageRegionalAccount(actor, target.scope_type ?? null);
+  return false;
 }

@@ -3,7 +3,7 @@ import { lastMonths, totals } from "@/lib/stats";
 import { passwordError } from "@/lib/validate";
 import { beltThresholdsError, DEFAULT_BELT_THRESHOLDS } from "@/lib/belts";
 import { regionalTitle, scopeLabel } from "@/lib/labels";
-import { buildWelcomeEmail, DEFAULT_MAIL_FROM } from "@/lib/email";
+import { buildRegionalWelcomeEmail, buildWelcomeEmail, DEFAULT_MAIL_FROM } from "@/lib/email";
 import { buildSeed, DEMO_PASSWORD, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
 import { accessFor, canCreateAdvisor, canManageRegionalAccount, canManageRegionalAccounts, canResendWelcome, canResetPassword, canSetUserActive, passwordSignIn } from "./authz";
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile, type WelcomeEmailPreview, type WelcomeEmailResult } from "./types";
@@ -14,10 +14,20 @@ const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.d
 const SESSION_KEY = "tba.mock.session.email";
 
 /**
- * A clearly-sample app download link used only in the demo preview of the welcome email. The real app reads the
- * link from the ADVISOR_APK_URL env var (see `email.server.ts`); the demo sends nothing.
+ * Clearly-sample links used only in the demo preview of the welcome emails. The real app reads them from the
+ * APP_APK_URL and APP_URL env vars (see `email.server.ts`); the demo sends nothing.
  */
 const DEMO_APK_URL = "https://app.tbaindia.in/tba-advisor.apk";
+const DEMO_APP_URL = "https://app.tbaindia.in";
+
+/** The demo's preview of the welcome email a person would receive (advisor or regional account). */
+function welcomePreview(p: Profile, password: string): WelcomeEmailPreview {
+  const links = { apkUrl: DEMO_APK_URL, appUrl: DEMO_APP_URL };
+  const body = p.role === "operations"
+    ? buildRegionalWelcomeEmail({ name: p.full_name, title: regionalTitle(p.scope_type, p.scope_value), email: p.email, password, ...links })
+    : buildWelcomeEmail({ name: p.full_name, advisorId: p.advisor_code ?? "", email: p.email, password, ...links });
+  return { from: DEFAULT_MAIL_FROM, to: p.email, ...body };
+}
 
 let memory: MockDb | null = null;
 let memorySession: string | null = null;
@@ -184,12 +194,7 @@ export const mockApi: DataApi = {
     save();
     // Simulate the welcome email (nothing is really sent in the demo) and return it so the admin can preview
     // exactly what the advisor receives: their login, their password, and the app download link.
-    const preview: WelcomeEmailPreview = {
-      from: DEFAULT_MAIL_FROM,
-      to: email,
-      ...buildWelcomeEmail({ name: p.full_name, advisorId: code, email, password: input.password, apkUrl: DEMO_APK_URL }),
-    };
-    const welcomeEmail: WelcomeEmailResult = { status: "preview", preview };
+    const welcomeEmail: WelcomeEmailResult = { status: "preview", preview: welcomePreview(p, input.password) };
     return wait({ profile: p, welcomeEmail });
   },
   async listOpsUsers() {
@@ -222,7 +227,9 @@ export const mockApi: DataApi = {
     db.profiles.push(p);
     db.passwords[email] = input.password; // demo: the account can now sign in with email + password
     save();
-    return wait(p);
+    // Simulated, as for advisors: return the welcome email so the admin can preview what the account receives.
+    const welcomeEmail: WelcomeEmailResult = { status: "preview", preview: welcomePreview(p, input.password) };
+    return wait({ profile: p, welcomeEmail });
   },
   async setUserActive(id, active) {
     const actor = requireOps();
@@ -254,19 +261,15 @@ export const mockApi: DataApi = {
     const db = load();
     const target = db.profiles.find((p) => p.id === id);
     if (!target) throw new Error("User not found.");
-    if (!canResendWelcome(actor, target)) throw new Error("You are not allowed to resend this advisor's welcome email.");
-    if (!target.active) throw new Error("Reactivate the advisor before resending their welcome email.");
+    if (target.id === actor.id) throw new Error("You cannot resend your own welcome email.");
+    if (!canResendWelcome(actor, target)) throw new Error("You are not allowed to resend this account's welcome email.");
+    if (!target.active) throw new Error("Reactivate the account before resending their welcome email.");
     // As on the server: the original password is never kept, so a fresh temporary one is set and emailed.
     const bytes = crypto.getRandomValues(new Uint8Array(9));
     const password = Array.from(bytes, (b) => "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 56]).join("") + "7";
     db.passwords[target.email] = password;
     save();
-    const preview: WelcomeEmailPreview = {
-      from: DEFAULT_MAIL_FROM,
-      to: target.email,
-      ...buildWelcomeEmail({ name: target.full_name, advisorId: target.advisor_code ?? "", email: target.email, password, apkUrl: DEMO_APK_URL }),
-    };
-    return wait({ status: "preview", preview } as WelcomeEmailResult);
+    return wait({ status: "preview", preview: welcomePreview(target, password) } as WelcomeEmailResult);
   },
 
   async findDrops(f, { limit, cursor }) {

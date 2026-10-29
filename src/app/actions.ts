@@ -11,9 +11,10 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { isEmail, passwordError } from "@/lib/validate";
 import { canCreateAdvisor, canManageRegionalAccount, canResendWelcome, canResetPassword, canSetUserActive } from "@/lib/data/authz";
-import { sendWelcomeEmail, welcomeEmailNotReady } from "@/lib/email.server";
+import { sendRegionalWelcomeEmail, sendWelcomeEmail, welcomeEmailNotReady } from "@/lib/email.server";
 import { randomBytes } from "node:crypto";
-import type { AdvisorCreated, NewAdvisor, WelcomeEmailResult, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
+import { regionalTitle } from "@/lib/labels";
+import type { AdvisorCreated, OpsUserCreated, NewAdvisor, WelcomeEmailResult, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export type ClaimResult =
@@ -273,7 +274,7 @@ async function linkSignIn(ref: DocumentReference, email: string, pw: string, dis
  * state and city accounts only ({@link canManageRegionalAccount}). Each regional account then creates advisors
  * within its own scope. national carries no region (scope_value is null).
  */
-export async function createOpsUser(idToken: string, input: NewOpsUser): Promise<ActionResult<Profile>> {
+export async function createOpsUser(idToken: string, input: NewOpsUser): Promise<ActionResult<OpsUserCreated>> {
   return run("add the regional account", async () => {
     const me = await caller(idToken, ["operations", "master"]);
     if (!canManageRegionalAccount(me, input.scope_type)) {
@@ -298,7 +299,10 @@ export async function createOpsUser(idToken: string, input: NewOpsUser): Promise
       });
     });
     await linkSignIn(ref, email, pw, full_name);
-    return toProfile(await ref.get());
+    const profile = toProfile(await ref.get());
+    // Best effort, exactly like advisors: sendRegionalWelcomeEmail never throws, so the account stays created.
+    const welcomeEmail = await sendRegionalWelcomeEmail({ name: full_name, title: regionalTitle(scope_type, scope_value), email, password: pw });
+    return { profile, welcomeEmail };
   });
 }
 
@@ -361,9 +365,10 @@ export async function resetUserPassword(idToken: string, id: string, newPassword
 }
 
 /**
- * Resend an advisor's welcome email (login + app download link). The original password is never stored, so this
- * sets a fresh temporary password on their Firebase Auth user and emails it. Same authorisation as
- * {@link resetUserPassword}: master → any advisor; an operations account → advisors in its own region only.
+ * Resend the welcome email to an advisor or a regional account (login + portal + app download link). The original
+ * password is never stored, so this sets a fresh temporary password on their Firebase Auth user and emails it.
+ * Authorised by {@link canResendWelcome}: advisors as {@link resetUserPassword}; regional accounts by
+ * canManageRegionalAccount (master: any tier; national: state and city); never the master.
  * Refuses up front (without touching the password) when email is not configured.
  */
 export async function resendWelcomeEmail(idToken: string, id: string): Promise<ActionResult<WelcomeEmailResult>> {
@@ -373,8 +378,9 @@ export async function resendWelcomeEmail(idToken: string, id: string): Promise<A
     const t = (await ref.get()).data();
     if (!t) throw new Refusal("User not found.");
     const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null, scope_type: (t.scope_type ?? null) as Profile["scope_type"] };
-    if (!canResendWelcome(me, target)) throw new Refusal("You are not allowed to resend this advisor's welcome email.");
-    if (t.active !== true) throw new Refusal("Reactivate the advisor before resending their welcome email.");
+    if (id === me.pid) throw new Refusal("You cannot resend your own welcome email.");
+    if (!canResendWelcome(me, target)) throw new Refusal("You are not allowed to resend this account's welcome email.");
+    if (t.active !== true) throw new Refusal("Reactivate the account before resending their welcome email.");
     const notReady = welcomeEmailNotReady();
     if (notReady) throw new Refusal(`The welcome email cannot be sent: ${notReady}.`);
     const pw = randomBytes(9).toString("base64url"); // 12 characters
@@ -386,6 +392,10 @@ export async function resendWelcomeEmail(idToken: string, id: string): Promise<A
     } else {
       const created = await auth.createUser({ email: t.email, password: pw, emailVerified: true, displayName: t.full_name });
       await ref.update({ uid: created.uid });
+    }
+    if (t.role === "operations") {
+      const title = regionalTitle(target.scope_type, (t.scope_value ?? null) as string | null);
+      return sendRegionalWelcomeEmail({ name: t.full_name ?? "", title, email: t.email, password: pw });
     }
     return sendWelcomeEmail({ name: t.full_name ?? "", advisorId: t.advisor_code ?? "", email: t.email, password: pw });
   });

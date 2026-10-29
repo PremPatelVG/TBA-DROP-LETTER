@@ -159,6 +159,8 @@ export type WelcomeEmailResult =
 
 /** Result of creating an advisor: the new access-list profile plus the welcome-email outcome. */
 export type AdvisorCreated = { profile: Profile; welcomeEmail: WelcomeEmailResult };
+/** Result of creating a regional account: the new profile plus the welcome-email outcome (best effort). */
+export type OpsUserCreated = { profile: Profile; welcomeEmail: WelcomeEmailResult };
 
 /** Outcome of signing in. Only people on the access list who are active get `ok`. */
 export type AccessResult =
@@ -207,7 +209,8 @@ export interface DataApi {
   createAdvisor(input: NewAdvisor): Promise<AdvisorCreated>;
   /** Master only. */
   listOpsUsers(): Promise<Profile[]>;
-  createOpsUser(input: NewOpsUser): Promise<Profile>;
+  /** Also sends the regional account a welcome email (best effort; see {@link OpsUserCreated.welcomeEmail}). */
+  createOpsUser(input: NewOpsUser): Promise<OpsUserCreated>;
   /** Master: operations accounts. Operations or master: advisors. Deactivated people cannot sign in. */
   setUserActive(id: string, active: boolean): Promise<void>;
   /**
@@ -216,8 +219,8 @@ export interface DataApi {
    */
   resetUserPassword(id: string, newPassword: string): Promise<void>;
   /**
-   * Resend an advisor's welcome email (login + app link). Sets a fresh temporary password, since the original is
-   * never stored. Same authorisation as resetUserPassword (regional scope enforced). The demo returns a preview.
+   * Resend the welcome email to an advisor or a regional account (login + portal + app link). Sets a fresh
+   * temporary password, since the original is never stored. Authorised by canResendWelcome. The demo returns a preview.
    */
   resendWelcomeEmail(id: string): Promise<WelcomeEmailResult>;
 

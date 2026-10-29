@@ -217,12 +217,13 @@ describe("canSetUserActive / canResendWelcome: regional reach for deactivate, re
     assert.equal(canSetUserActive(opsGujarat, advMumbai), false);
     assert.equal(canResendWelcome(opsGujarat, advMumbai), false);
   });
-  test("only master manages operations accounts; nobody manages the master; welcome is advisors only", () => {
+  test("only master manages operations accounts; nobody manages the master", () => {
     assert.equal(canSetUserActive(master, anOpsUser), true);
     assert.equal(canSetUserActive(opsNational, anOpsUser), false);
     assert.equal(canSetUserActive(opsRajkot, anOpsUser), false);
     assert.equal(canSetUserActive(master, theMaster), false);
-    assert.equal(canResendWelcome(master, anOpsUser), false);
+    assert.equal(canResendWelcome(master, anOpsUser), true, "master may resend to a national account");
+    assert.equal(canResendWelcome(master, theMaster), false, "never the master");
   });
   test("fail closed: no scope or an advisor manages nobody", () => {
     assert.equal(canSetUserActive(opsNoScope, advRajkot), false);
@@ -257,7 +258,7 @@ describe("canManageRegionalAccount: who creates/edits/deactivates/resets regiona
     for (const t of [stateAcct, cityAcct]) {
       assert.equal(canResetPassword(opsNational, t), true);
       assert.equal(canSetUserActive(opsNational, t), true);
-      assert.equal(canResendWelcome(opsNational, t), false, "welcome email is for advisors only");
+      assert.equal(canResendWelcome(opsNational, t), true, "national may resend state/city welcome emails");
     }
   });
   test("national cannot manage national or master accounts, nor edit belt thresholds", () => {
@@ -283,5 +284,41 @@ describe("canManageRegionalAccount: who creates/edits/deactivates/resets regiona
       assert.equal(canResetPassword(actor, { role: "operations", city: null, state: null }), false);
     }
     assert.equal(canManageRegionalAccount({ role: "operations", scope_type: null }, "city"), false);
+  });
+});
+
+describe("canResendWelcome on regional accounts: follows canManageRegionalAccount", () => {
+  const master = { role: "master", scope_type: null, scope_value: null };
+  const opsNational = { role: "operations", scope_type: "national", scope_value: null };
+  const opsGujarat = { role: "operations", scope_type: "state", scope_value: "Gujarat" };
+  const opsRajkot = { role: "operations", scope_type: "city", scope_value: "Rajkot" };
+  const advisorActor = { role: "advisor", scope_type: null, scope_value: null };
+  const t = (scope_type) => ({ role: "operations", city: null, state: null, scope_type });
+  const theMaster = { role: "master", city: null, state: null, scope_type: null };
+
+  test("master: national, state and city accounts", () => {
+    for (const tier of ["national", "state", "city"]) assert.equal(canResendWelcome(master, t(tier)), true, tier);
+  });
+  test("national (TBA India Ops): state and city accounts only, never another national", () => {
+    assert.equal(canResendWelcome(opsNational, t("state")), true);
+    assert.equal(canResendWelcome(opsNational, t("city")), true);
+    assert.equal(canResendWelcome(opsNational, t("national")), false);
+  });
+  test("state/city accounts and advisors: no regional accounts", () => {
+    for (const actor of [opsGujarat, opsRajkot, advisorActor]) {
+      for (const tier of ["national", "state", "city"]) assert.equal(canResendWelcome(actor, t(tier)), false);
+    }
+  });
+  test("never the master account, and an unknown or missing tier fails closed", () => {
+    for (const actor of [master, opsNational]) {
+      assert.equal(canResendWelcome(actor, theMaster), false);
+      assert.equal(canResendWelcome(actor, t(null)), false);
+      assert.equal(canResendWelcome(actor, t("planet")), false);
+    }
+  });
+  test("matches canManageRegionalAccount for every actor and tier", () => {
+    for (const actor of [master, opsNational, opsGujarat, opsRajkot, advisorActor]) {
+      for (const tier of ["national", "state", "city", null]) assert.equal(canResendWelcome(actor, t(tier)), canManageRegionalAccount(actor, tier));
+    }
   });
 });

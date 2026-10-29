@@ -147,7 +147,7 @@ Pick your project with the arrow keys and Enter, and when asked for an alias typ
 
 ### 6b. Set up the welcome email (SMTP) — before you deploy
 The non-secret SMTP settings (host, port, user, from) are already filled in `apphosting.yaml` for the
-`indiaops@tbaindia.in` Google Workspace mailbox. You just create the password secret and set the APK link:
+`indiaops@tbaindia.in` Google Workspace mailbox. You just create the password secret and set the two links:
 1. Create a **Google App Password** on `indiaops@tbaindia.in`: turn on 2-Step Verification, then
    **Google Account → Security → App passwords → Mail**, and copy the 16-character code.
 2. Store it in Cloud Secret Manager for this project (paste the code when prompted; answer **Yes** to grant the
@@ -155,12 +155,14 @@ The non-secret SMTP settings (host, port, user, from) are already filled in `app
    ```
    npx firebase apphosting:secrets:set SMTP_PASS
    ```
-3. `ADVISOR_APK_URL` in `apphosting.yaml` points at `https://app.tbaindia.in/tba-advisor.apk` by default. The
-   download link in the email only works once a real APK is hosted there (go-live step 11 / the Android section),
-   so edit that value to your real hosted URL when you have one and redeploy. Until then the login email still
-   sends but its download link will 404.
+3. `APP_APK_URL` in `apphosting.yaml` points at `https://app.tbaindia.in/tba-advisor.apk` by default. The app is
+   **not** on Google Play or the App Store: it is distributed only by this emailed download link, so **the built APK
+   must be hosted at `APP_APK_URL`** (go-live step 11 / A4). Edit the value to your real hosted URL and redeploy;
+   until a real file is there the download link in the email will 404. (The older name `ADVISOR_APK_URL` still works.)
+4. `APP_URL` in `apphosting.yaml` is the web portal address the email links to (iPhone users and computers use the
+   website). It is a placeholder (`https://app.tbaindia.in`): set it to the app's real address and redeploy.
 
-If you skip this step, advisors are still created and the email is simply skipped with a short note. See
+If you skip this step, advisors and regional accounts are still created and the email is simply skipped with a short note. See
 [Email (SMTP) setup](#email-smtp-setup) for details and other mail providers. The deploy in step 7 **fails** if the
 `SMTP_PASS` secret has not been created, because `apphosting.yaml` references it — so do step 2 above first (or
 comment out the `SMTP_PASS` block in `apphosting.yaml` if you are not using the welcome email yet).
@@ -243,20 +245,21 @@ their initial password; they (or you) can change it afterwards:
 To remove someone, click **Deactivate** next to them: they lose access at once and are signed out
 (**Reactivate** undoes it).
 
-### 11. Put the app on the advisors' phones
-- **Android**: build the advisor app once and send it to them, or publish it on Google Play: see
-  [Android app for advisors](#android-app-for-advisors) just below.
-- **iPhone** (there is no iPhone app): open the app's address in Safari, sign in with Google, then the Share
-  button > **Add to Home Screen**.
+### 11. Put the app on the phones
+- **Android**: build the app once and host the `.apk` at `APP_APK_URL`; every welcome email links to it (see
+  [Android app for advisors](#android-app-for-advisors) just below). Google Play is **not** used — no store listing,
+  privacy policy form, Data safety form or Play app signing is needed.
+- **iPhone** (there is no iPhone app, and the App Store is not used): open the portal address (`APP_URL`) in Safari,
+  sign in, then the Share button > **Add to Home Screen**. The welcome email says this.
 
 ### Email (SMTP) setup
-When you add an advisor (step 10), the app can email them their login and a link to download the Android app,
-sent **from `indiaops@tbaindia.in`**. This is optional: if it is not set up, advisors are still created and you
-simply share their login and the app link yourself (you will see a short note when the email is skipped).
+When you add an advisor or a regional account (step 10), the app can email them their login, the web portal link
+and a link to download the Android app, sent **from `indiaops@tbaindia.in`**. This is optional: if it is not set
+up, accounts are still created and you simply share their login and the links yourself (you will see a short note when the email is skipped).
 
 On Firebase App Hosting the non-secret settings are **already filled in** in `apphosting.yaml` for the
 `indiaops@tbaindia.in` Google Workspace mailbox, so you normally only need to (a) create the `SMTP_PASS` secret and
-(b) set `ADVISOR_APK_URL` to your hosted APK. The two commands are in go-live step 3b below. On other hosts, set all
+(b) set `APP_APK_URL` to your hosted APK and `APP_URL` to the portal address (go-live step 6b). On other hosts, set all
 of these as environment variables. The password is **never** stored in `apphosting.yaml` or committed to the repo
 (see `.env.example`) — it lives only in Cloud Secret Manager:
 - `SMTP_HOST` — your mail provider's SMTP server for `indiaops@tbaindia.in` (Google Workspace: `smtp.gmail.com`;
@@ -265,8 +268,11 @@ of these as environment variables. The password is **never** stored in `apphosti
 - `SMTP_SECURE` — `true` only for port 465; otherwise leave it off.
 - `SMTP_USER` / `SMTP_PASS` — the mailbox login (usually `indiaops@tbaindia.in`) and its password or app-password.
 - `MAIL_FROM` — the From address (defaults to `indiaops@tbaindia.in`).
-- `ADVISOR_APK_URL` — where you host the built app (see [Android app for advisors](#android-app-for-advisors));
-  the email links here so the advisor installs it on their phone, for example `https://app.tbaindia.in/tba-advisor.apk`.
+- `APP_APK_URL` — where you host the built app (see [Android app for advisors](#android-app-for-advisors));
+  the email links here so the person installs it on their Android phone, for example
+  `https://app.tbaindia.in/tba-advisor.apk`. The older name `ADVISOR_APK_URL` is still read as a fallback.
+- `APP_URL` — the web portal address the email links to, for example `https://app.tbaindia.in`
+  (`NEXT_PUBLIC_APP_URL` is read as a fallback).
 
 **Recommended config — Google Workspace mailbox (`indiaops@tbaindia.in`):**
 
@@ -277,7 +283,8 @@ SMTP_SECURE=false
 SMTP_USER=indiaops@tbaindia.in
 SMTP_PASS=<Google App Password>
 MAIL_FROM=indiaops@tbaindia.in
-ADVISOR_APK_URL=https://app.tbaindia.in/tba-advisor.apk
+APP_APK_URL=https://app.tbaindia.in/tba-advisor.apk
+APP_URL=https://app.tbaindia.in
 ```
 
 `SMTP_PASS` must be a **Google App Password**, not the normal mailbox password: enable 2-Step Verification on the
@@ -297,11 +304,18 @@ normal environment variable instead.) To rotate the password later, run the same
 > The deploy **fails** if `apphosting.yaml` references `secret: SMTP_PASS` but the secret does not exist yet, so
 > create the secret **before** the first `firebase deploy`.
 
-The welcome email fires on advisor creation. It contains the advisor's **username** (their email), the **initial
-password** you set, their **Advisor ID**, and the **download link** (an "open on your phone to install" link, not a
-raw `.apk` attachment — mail providers block those). Nothing about the password is written to Firestore or the logs.
-If sending fails, or SMTP is not configured, the advisor is still created and the admin sees a short, non-blocking
-note. You can preview exactly what the advisor receives in the demo: add an advisor and the welcome email opens.
+The welcome email fires when an **advisor** or a **regional account** (State/City President, TBA India Ops) is
+created. It contains their **username** (their email), the **initial password** you set, the **web portal link**
+(`APP_URL`, which iPhone users use instead of an app; Sign in with Google with the same Gmail also works), and the
+**Android download link** (`APP_APK_URL`, with a line on allowing installs from this source — a link, not a raw
+`.apk` attachment, which mail providers block). Advisors also get their **Advisor ID**; regional accounts get their
+title (e.g. "Gujarat President"). Nothing about the password is written to Firestore or the logs. If sending fails,
+or SMTP is not configured, the account is still created and the admin sees a short, non-blocking note.
+
+**Resend welcome email** (Advisors screen, and the Regional accounts screen) sets a new temporary password after a
+confirmation and emails it again. Who may resend to a regional account follows `canManageRegionalAccount`: master →
+national, state and city accounts; TBA India Ops → state and city accounts; never the master. You can preview
+exactly what is received in the demo: add an advisor or a regional account and the welcome email opens.
 
 ### Later: publishing a new version
 Run `npx firebase deploy` again in the project folder (`npx firebase deploy --only apphosting` if only the app
@@ -347,7 +361,7 @@ npm run build:apk -- --host tba-drop-letter--your-project-id.<region>.hosted.app
   Read A2 before you continue.
 - At the end it prints where the app is and the key's **SHA-256 fingerprint** (a line like `AB:CD:12:...`):
   - `android/output/tba-drop-letter.apk`: the app to send to phones;
-  - `android/output/tba-drop-letter.aab`: the same app for Google Play.
+  - `android/output/tba-drop-letter.aab`: the same app for Google Play (not needed — the app is not published there).
 
 ### A2. Keep the signing key safe
 The key is the file `tba-drop-letter.keystore` in the folder `tba-drop-letter-signing` in your user folder (on
@@ -356,7 +370,7 @@ it is signed with the same key, so **every future build needs both**.
 - **Back it up now**: copy the `tba-drop-letter-signing` folder to a USB stick or a company drive, and keep the
   password in a password manager (or on paper in a safe place), not next to the file.
 - **If you lose either one**, the app can no longer be updated: everyone has to uninstall it and install a new
-  app. (On Google Play, Google can reset a lost upload key; see A4.)
+  app.
 - **Keep it private**: whoever has the key and its password can make an app that phones accept as an update of
   yours. Never email it, put it in the project folder or upload it anywhere.
 - To build on another computer, copy the folder to the same place there, or add
@@ -371,33 +385,27 @@ Until the site lists the key's fingerprint, the app works but shows a browser ad
 
 Then close the app on the phone and open it again; if the bar is still there after a few hours, reinstall the app.
 
-### A4. Give the app to the advisors
-**Directly** (simplest for a small team): send `tba-drop-letter.apk` by WhatsApp, email or Google Drive. On the
-phone, open the file and tap **Install**. The first time, Android asks to allow installing apps from that source
+### A4. Give the app to people (direct distribution by emailed link)
+The app is **not** published on Google Play or the App Store. It is distributed directly: **host
+`android/output/tba-drop-letter.apk` at a public HTTPS address and set `APP_APK_URL` to it** (for example upload it
+to `public/tba-advisor.apk` of the site, or to any file host that serves it as a download, then redeploy). Every
+welcome email (advisors and regional accounts) contains that download link — not the file itself, because Gmail
+and most providers block `.apk` attachments, even zipped. On the phone, open the link and tap **Install**. The first time, Android asks to allow installing apps from that source
 (**Settings** > **Allow from this source**). If Play Protect warns about an unknown app, tap **More details** >
-**Install anyway**. Then open **TBA Drop Letter** and sign in with Google.
+**Install anyway**. Then open **TBA Drop Letter** and sign in. iPhone users have no app: they use the website.
 
-**Google Play** (updates arrive by themselves, no warnings):
-1. Create a Google Play developer account at https://play.google.com/console (a one-time US$25 fee and an
-   identity check; an organisation account needs a D-U-N-S number).
-2. **Create app** and upload `tba-drop-letter.aab` to a release. For staff only, use **Internal testing** (up to
-   100 people, invited by email) or a closed test; a public release needs a store listing, a privacy policy and
-   Google's review.
-3. Google signs apps from Play with its own key, so the site must list that key too. In Play Console open **App
-   integrity** > **App signing**, copy the SHA-256 of the **App signing key certificate**, add it in
-   `apphosting.yaml` after your own fingerprint with a comma between them (`value: "AB:CD:...:12, 98:76:...:EF"`),
-   and deploy again (A3, step 2).
-4. On Play, your own key is the "upload key". If it is lost, Google can reset it (App integrity > App signing).
+**Google Play: not needed.** Because the app is distributed by link, there is no Play Console account, store
+listing, privacy policy form, Data safety form or Play app signing to set up, and `ANDROID_CERT_SHA256` lists only
+your own key's fingerprint.
 
 ### Updating the Android app
 Changes to the website reach the app by themselves. Build again only to change the app's name, icon, colours or
-address, or when Google Play asks for a newer Android version: run the same command, with the same key and
-password (the version number goes up by itself). Advisors install the new `.apk` over the old one, keeping their
-data, or Google Play updates it.
+address: run the same command, with the same key and password (the version number goes up by itself). Replace the
+hosted file at `APP_APK_URL`; people install the new `.apk` over the old one from the same link, keeping their data.
 
 ### Good to know
-- **Package name**: the app's ID on Android and Google Play is `com.tba.dropletter`, a placeholder. **It can never
-  change once the app is published on Google Play** (another ID is another app). To use a different one, change it
+- **Package name**: the app's ID on Android is `com.tba.dropletter`, a placeholder. **Do not change it once people
+  have installed the app** (another ID is another app, and updates would not install over it). To use a different one, change it
   before the first release in both `android/twa-manifest.json` (`packageId`) and `apphosting.yaml`
   (`ANDROID_PACKAGE_NAME`). The app's name, colours and icons are also in `android/twa-manifest.json`.
 - **New address** (for example your own domain): build again with the new `--host`, and repeat go-live step 9.
@@ -415,7 +423,7 @@ data, or Google Play updates it.
 
 ### Troubleshooting the Android app
 - **A browser bar shows at the top**: `/.well-known/assetlinks.json` does not list the key the app was signed with
-  (A3; for a copy installed from Google Play, Play's key, A4 step 3). Fix it, deploy, and reopen the app.
+  (A3). Fix it, deploy, and reopen the app.
 - **Sign-in returns to the sign-in screen**: finish go-live step 9.
 - **"App not installed" when updating**: the phone has a copy signed with another key. Uninstall it first.
 - **The build stops while downloading**: check the internet connection and run the same command again; what

@@ -1,59 +1,60 @@
 import "server-only";
 import nodemailer from "nodemailer";
-import { buildWelcomeEmail, DEFAULT_MAIL_FROM, sendMail, type MailMessage } from "@/lib/email";
+import { buildRegionalWelcomeEmail, buildWelcomeEmail, DEFAULT_MAIL_FROM, sendMail, type MailMessage, type WelcomeEmailContent } from "@/lib/email";
 import type { WelcomeEmailResult } from "@/lib/data/types";
 
 /**
- * Server-only SMTP transport for the advisor welcome email. The pure body is built by {@link buildWelcomeEmail}
- * (in `src/lib/email.ts`, shared with the demo and the tests); this module only reads the SMTP config from the
- * environment and sends. It is imported solely by the server actions, so nodemailer never reaches the browser.
+ * Server-only SMTP transport for the welcome emails (advisors and regional accounts). The pure bodies are built in
+ * `src/lib/email.ts` (shared with the demo and the tests); this module only reads the config from the environment
+ * and sends. It is imported solely by the server actions, so nodemailer never reaches the browser.
  *
  * Config (all via env, never committed — see `.env.example`):
  *   SMTP_HOST, SMTP_PORT (default 587), SMTP_SECURE ("true" ⇒ implicit TLS, e.g. port 465), SMTP_USER, SMTP_PASS,
- *   MAIL_FROM (default indiaops@tbaindia.in), ADVISOR_APK_URL (where the built Android app is hosted).
+ *   MAIL_FROM (default indiaops@tbaindia.in),
+ *   APP_APK_URL (where the built Android app is hosted; the older name ADVISOR_APK_URL is still accepted),
+ *   APP_URL (the web portal address; NEXT_PUBLIC_APP_URL is accepted as a fallback).
  *
  * SECURITY: the credentials are read only here and never logged; the password that the email body carries (by
  * design) is never logged either. A failure is caught and reported as a short, non-sensitive reason.
  */
-/** Why the welcome email cannot be sent right now (SMTP or app link not configured), or null when it can. */
+
+/** The Android app download link: APP_APK_URL, falling back to the older ADVISOR_APK_URL. */
+export function apkUrlFromEnv(): string | undefined {
+  return process.env.APP_APK_URL?.trim() || process.env.ADVISOR_APK_URL?.trim() || undefined;
+}
+/** The web portal address: APP_URL, falling back to NEXT_PUBLIC_APP_URL. */
+export function appUrlFromEnv(): string | undefined {
+  return process.env.APP_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim() || undefined;
+}
+
+/** Why the welcome email cannot be sent right now (SMTP, app link or portal link not configured), or null when it can. */
 export function welcomeEmailNotReady(): string | null {
   if (!process.env.SMTP_HOST?.trim() || !process.env.SMTP_USER?.trim() || !process.env.SMTP_PASS) {
     return "email is not set up (SMTP_HOST, SMTP_USER and SMTP_PASS are required)";
   }
-  if (!process.env.ADVISOR_APK_URL?.trim()) return "the app download link is not set (ADVISOR_APK_URL)";
+  if (!apkUrlFromEnv()) return "the app download link is not set (APP_APK_URL)";
+  if (!appUrlFromEnv()) return "the web portal link is not set (APP_URL)";
   return null;
 }
 
-export async function sendWelcomeEmail(fields: {
-  name: string;
-  advisorId: string;
-  email: string;
-  password: string;
-}): Promise<WelcomeEmailResult> {
+/** Builds (with the configured links) and sends one welcome email. Never throws. */
+async function deliver(to: string, build: (links: { apkUrl: string; appUrl: string }) => WelcomeEmailContent): Promise<WelcomeEmailResult> {
   try {
-    const host = process.env.SMTP_HOST?.trim();
-    const user = process.env.SMTP_USER?.trim();
-    const pass = process.env.SMTP_PASS;
-    const apkUrl = process.env.ADVISOR_APK_URL?.trim();
+    // Not configured yet (e.g. before go-live): skip quietly, so account creation still reports a clear reason.
+    const notReady = welcomeEmailNotReady();
+    if (notReady) return { status: "skipped", reason: notReady };
+    const host = process.env.SMTP_HOST!.trim();
+    const user = process.env.SMTP_USER!.trim();
+    const pass = process.env.SMTP_PASS!;
     const from = process.env.MAIL_FROM?.trim() || DEFAULT_MAIL_FROM;
-
-    // Not configured yet (e.g. before go-live): skip quietly, so advisor creation still reports a clear reason.
-    if (!host || !user || !pass) {
-      return { status: "skipped", reason: "email is not set up (SMTP_HOST, SMTP_USER and SMTP_PASS are required)" };
-    }
-    if (!apkUrl) {
-      return { status: "skipped", reason: "the app download link is not set (ADVISOR_APK_URL)" };
-    }
-
-    const content = buildWelcomeEmail({ name: fields.name, advisorId: fields.advisorId, email: fields.email, password: fields.password, apkUrl });
-    const message: MailMessage = { from, to: fields.email, ...content };
+    const message: MailMessage = { from, to, ...build({ apkUrl: apkUrlFromEnv()!, appUrl: appUrlFromEnv()! }) };
 
     const transporter = nodemailer.createTransport({
       host,
       port: Number(process.env.SMTP_PORT) || 587,
       secure: process.env.SMTP_SECURE === "true",
       auth: { user, pass },
-      // Keep a hung mail server from holding up the response; advisor creation has already succeeded by now.
+      // Keep a hung mail server from holding up the response; account creation has already succeeded by now.
       connectionTimeout: 10_000,
       greetingTimeout: 10_000,
       socketTimeout: 15_000,
@@ -68,4 +69,14 @@ export async function sendWelcomeEmail(fields: {
     console.error("welcome email send failed:", e instanceof Error ? e.message : String(e));
     return { status: "failed", reason: "the welcome email could not be sent" };
   }
+}
+
+/** The advisor welcome email (login, Advisor ID, app link, portal link). Best effort: never throws. */
+export function sendWelcomeEmail(fields: { name: string; advisorId: string; email: string; password: string }): Promise<WelcomeEmailResult> {
+  return deliver(fields.email, (links) => buildWelcomeEmail({ ...fields, ...links }));
+}
+
+/** The regional-account welcome email (title, login, portal link, app link). Best effort: never throws. */
+export function sendRegionalWelcomeEmail(fields: { name: string; title: string; email: string; password: string }): Promise<WelcomeEmailResult> {
+  return deliver(fields.email, (links) => buildRegionalWelcomeEmail({ ...fields, ...links }));
 }

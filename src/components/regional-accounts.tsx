@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
-import { api, type OpsScopeType } from "@/lib/data";
+import { api, type OpsScopeType, type WelcomeEmailPreview, type WelcomeEmailResult } from "@/lib/data";
 import { regionalTitle, scopeLabel } from "@/lib/labels";
 import { btn2Cls, btnCls, cardCls, errMsg, Field, inputCls, Notice, useData, useUser } from "@/components/ui";
-import { canManageRegionalAccount, manageableRegionalTiers } from "@/lib/data/authz";
+import { canManageRegionalAccount, canResendWelcome, manageableRegionalTiers } from "@/lib/data/authz";
+import { WelcomeEmailPreviewDialog } from "@/components/welcome-email-preview";
 import { ResetPasswordDialog, type ResetTarget } from "@/components/reset-password-dialog";
 import { isEmail, passwordError } from "@/lib/validate";
 
@@ -24,7 +25,10 @@ export default function RegionalAccounts() {
   const tiers = manageableRegionalTiers(user);
   const isMaster = user.role === "master";
   const { data, error, reload } = useData(() => api.listOpsUsers());
-  const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "error" | "info"; text: string } | null>(null);
+  // The last welcome email prepared in the demo, so it can be (re)opened as a preview (same modal as advisors).
+  const [emailPreview, setEmailPreview] = useState<WelcomeEmailPreview | null>(null);
+  const [showEmail, setShowEmail] = useState(false);
   const [pending, setPending] = useState(false);
   const [scopeType, setScopeType] = useState<OpsScopeType>("state");
   const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
@@ -45,15 +49,44 @@ export default function RegionalAccounts() {
     setPending(true);
     setMsg(null);
     try {
-      const p = await api.createOpsUser({ full_name: s("full_name"), email, scope_type: scopeType, scope_value, password: pw });
+      const { profile: p, welcomeEmail } = await api.createOpsUser({ full_name: s("full_name"), email, scope_type: scopeType, scope_value, password: pw });
       form.reset();
       setScopeType("state");
-      setMsg({ kind: "ok", text: `${p.full_name} added as ${regionalTitle(p.scope_type, p.scope_value)} (${scopeLabel(p.scope_type, p.scope_value)}). They can now sign in as ${p.email} with the password you set, or with Google.` });
+      const base = `${p.full_name} added as ${regionalTitle(p.scope_type, p.scope_value)} (${scopeLabel(p.scope_type, p.scope_value)}). They can now sign in as ${p.email} with the password you set, or with Google.`;
+      showWelcome(welcomeEmail, base, p.email);
       reload();
     } catch (err) {
       setMsg({ kind: "error", text: errMsg(err) });
     }
     setPending(false);
+  }
+  /** Reports the welcome-email outcome (best effort: the account exists whatever happened to the email). */
+  function showWelcome(r: WelcomeEmailResult, base: string, email: string) {
+    if (r.status === "preview") {
+      // Demo: nothing is actually sent — show exactly what the account would receive.
+      setEmailPreview(r.preview);
+      setShowEmail(true);
+      setMsg({ kind: "ok", text: `${base} A welcome email with their login, the portal link and the app download link was prepared — open the preview to see it.` });
+    } else if (r.status === "sent") {
+      setMsg({ kind: "ok", text: `${base} A welcome email with their login, the portal link and the app download link was sent to ${email}.` });
+    } else {
+      setMsg({ kind: "info", text: `${base} The welcome email could not be sent (${r.reason}) — share their login and the links with them directly.` });
+    }
+  }
+  // Resend: the original password is never stored, so this sets a fresh temporary password and emails it.
+  async function resend(id: string, name: string, email: string) {
+    if (!window.confirm(`Resend the welcome email to ${name}? This sets a new temporary password and emails it to ${email}; their current password stops working.`)) return;
+    setMsg(null);
+    try {
+      const r = await api.resendWelcomeEmail(id);
+      if (r.status === "failed" || r.status === "skipped") {
+        setMsg({ kind: "error", text: `The welcome email could not be sent (${r.reason}). Use Reset password and share the new password with them directly.` });
+      } else {
+        showWelcome(r, `A new temporary password was set for ${name}.`, email);
+      }
+    } catch (err) {
+      setMsg({ kind: "error", text: errMsg(err) });
+    }
   }
   async function toggle(id: string, active: boolean) {
     try {
@@ -86,6 +119,7 @@ export default function RegionalAccounts() {
                     <td className="p-3">{u.active ? <span className="text-green-700">Active</span> : "Deactivated"}</td>
                     <td className="p-3 text-right">
                       {canManageRegionalAccount(user, u.scope_type) && u.id !== user.id && <div className="flex justify-end gap-2">
+                        {u.active && canResendWelcome(user, u) && <button className={btn2Cls} onClick={() => resend(u.id, u.full_name, u.email)}>Resend welcome email</button>}
                         <button className={btn2Cls} onClick={() => setResetTarget({ id: u.id, full_name: u.full_name, email: u.email })}>Reset password</button>
                         <button className={btn2Cls} onClick={() => toggle(u.id, !u.active)}>{u.active ? "Deactivate" : "Reactivate"}</button>
                       </div>}
@@ -115,9 +149,11 @@ export default function RegionalAccounts() {
           )}
           <Field name="password" label="Initial password" type="password" autoComplete="new-password" placeholder="At least 8 characters" />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+          {emailPreview && !showEmail && <button type="button" className={`${btn2Cls} w-full`} onClick={() => setShowEmail(true)}>View welcome email</button>}
           <button disabled={pending} className={`${btnCls} w-full`}>{pending ? "Adding..." : "Add account"}</button>
         </form>
       </section>
+      <WelcomeEmailPreviewDialog email={showEmail ? emailPreview : null} onClose={() => setShowEmail(false)} />
       <ResetPasswordDialog target={resetTarget} onClose={() => setResetTarget(null)}
         onDone={(text) => { setResetTarget(null); setMsg({ kind: "ok", text }); }} />
     </div>

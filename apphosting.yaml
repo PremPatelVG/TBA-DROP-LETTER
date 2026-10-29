@@ -24,21 +24,20 @@ env:
 
   # Android app for advisors (README, "Android app for advisors"). Served at /.well-known/assetlinks.json so the app
   # opens full screen, without the browser bar. Neither value is a secret.
-  # The app's package name: must match android/twa-manifest.json, and can never change once the app is on Google Play.
+  # The app's package name: must match android/twa-manifest.json, and do not change it once people have installed the app.
   - variable: ANDROID_PACKAGE_NAME
     value: com.tba.dropletter
     availability: [RUNTIME]
-  # The SHA-256 fingerprint of the app's signing key, which `npm run build:apk` prints at the end. If the app is
-  # published on Google Play, add Play's app signing fingerprint too, after a comma (Play Console > Test and
-  # release > App integrity > App signing). Remove the # signs, paste the fingerprint, and deploy again.
+  # The SHA-256 fingerprint of the app's signing key, which `npm run build:apk` prints at the end. (The app is
+  # distributed by link, not Google Play, so no Play app signing fingerprint is needed.) Remove the # signs, paste the fingerprint, and deploy again.
   # - variable: ANDROID_CERT_SHA256
   #   value: "AB:CD:EF:...:12"
   #   availability: [RUNTIME]
 
-  # Advisor welcome email (README, "Email (SMTP) setup"). When an advisor is added they are emailed their login and
-  # the app download link, from indiaops@tbaindia.in. The non-secret settings below are the recommended Google
-  # Workspace config; the password is a Secret Manager secret (see SMTP_PASS). If SMTP_PASS or ADVISOR_APK_URL is
-  # unset, advisors are still created and the email is skipped with a short note. Change these to match your mail
+  # Welcome emails for advisors and regional accounts (README, "Email (SMTP) setup"). When an advisor or a regional
+  # account is added they are emailed their login, the portal link and the app download link, from
+  # indiaops@tbaindia.in. The non-secret settings below are the recommended Google Workspace config; the password is a Secret Manager secret (see SMTP_PASS). If SMTP_PASS, APP_APK_URL or APP_URL is
+  # unset, accounts are still created and the email is skipped with a short note. Change these to match your mail
   # provider if you are not using the indiaops@tbaindia.in Google Workspace mailbox.
   - variable: SMTP_HOST
     value: smtp.gmail.com
@@ -62,9 +61,15 @@ env:
   - variable: SMTP_PASS
     secret: SMTP_PASS
     availability: [RUNTIME]
-  # Where you host the built APK (see README, "Android app for advisors"); the welcome email links here. Replace
-  # this with your real hosted-APK URL — until it points at a real file the download link in the email will 404,
-  # so host the APK first (go-live step 11) and then set this value and redeploy.
-  - variable: ADVISOR_APK_URL
+  # Where you host the built Android APK; every welcome email (advisors and regional accounts) links here. The app is
+  # NOT on Google Play or the App Store: it is distributed only by this emailed download link (README, "Android app").
+  # Replace this with your real hosted-APK URL — until it points at a real file the download link will 404, so host
+  # the APK first and then set this value and redeploy. (The older name ADVISOR_APK_URL is still accepted.)
+  - variable: APP_APK_URL
     value: https://app.tbaindia.in/tba-advisor.apk
+    availability: [RUNTIME]
+  # The web portal address that welcome emails link to (iPhone users and computers use the website). PLACEHOLDER:
+  # replace with the app's real address (your custom domain, or the *.hosted.app URL) and redeploy.
+  - variable: APP_URL
+    value: https://app.tbaindia.in
     availability: [RUNTIME]

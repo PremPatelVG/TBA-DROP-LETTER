@@ -2,7 +2,7 @@
 // (no SMTP, no nodemailer, no browser): run with `npm run test:unit`. Node strips the TypeScript types on import.
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { buildWelcomeEmail, DEFAULT_MAIL_FROM, sendMail } from "../../src/lib/email.ts";
+import { buildRegionalWelcomeEmail, buildWelcomeEmail, DEFAULT_MAIL_FROM, sendMail } from "../../src/lib/email.ts";
 
 const FIELDS = {
   name: "Asha Patel",
@@ -10,6 +10,7 @@ const FIELDS = {
   email: "asha.patel@example.com",
   password: "advisor-pass-1",
   apkUrl: "https://app.tbaindia.in/tba-advisor.apk",
+  appUrl: "https://portal.example.in",
 };
 
 /** The envelope + body, assembled the way createAdvisor / the demo do. */
@@ -53,6 +54,71 @@ describe("buildWelcomeEmail: the advisor welcome email", () => {
     assert.ok(!html.includes("<b>"), "the raw tag must not survive");
     assert.ok(html.includes("A&lt;b&gt; &amp; &quot;x&quot;"), "name is escaped");
     assert.ok(html.includes("p&lt;a&gt;&amp;ss&#39;"), "password is escaped");
+  });
+});
+
+describe("buildWelcomeEmail: portal link and iPhone note (no app stores)", () => {
+  test("the advisor email also carries the web portal link and tells iPhone users to use the website", () => {
+    const { text, html } = buildWelcomeEmail(FIELDS);
+    assert.ok(text.includes("https://portal.example.in"));
+    assert.ok(html.includes('href="https://portal.example.in"'));
+    assert.match(text, /iPhone/);
+    assert.match(text, /allow installing apps from this source/i);
+  });
+});
+
+const REGIONAL = {
+  name: "Kiran Shah",
+  title: "Gujarat President",
+  email: "kiran.shah@gmail.com",
+  password: "Temp-Pass-42",
+  apkUrl: "https://app.tbaindia.in/tba-advisor.apk",
+  appUrl: "https://portal.example.in",
+};
+
+describe("buildRegionalWelcomeEmail: the regional-account (President / TBA India Ops) welcome email", () => {
+  test("text and HTML carry name, title, username, temporary password, portal link and APK link", () => {
+    const { subject, text, html } = buildRegionalWelcomeEmail(REGIONAL);
+    assert.match(subject, /welcome/i);
+    assert.ok(subject.includes("Gujarat President"));
+    for (const body of [text, html]) {
+      assert.ok(body.includes("Kiran Shah"), "name");
+      assert.ok(body.includes("Gujarat President"), "role title");
+      assert.ok(body.includes("kiran.shah@gmail.com"), "username");
+      assert.ok(body.includes("Temp-Pass-42"), "temporary password");
+      assert.ok(body.includes("https://portal.example.in"), "portal link");
+      assert.ok(body.includes("https://app.tbaindia.in/tba-advisor.apk"), "APK link");
+    }
+    assert.ok(html.includes('href="https://portal.example.in"') && html.includes('href="https://app.tbaindia.in/tba-advisor.apk"'), "links are hrefs");
+    assert.match(text, /Sign in with Google/);
+    assert.match(text, /iPhone/);
+    assert.match(text, /allow installing apps from this source/i);
+    assert.doesNotMatch(text, /Advisor ID/, "no advisor fields");
+  });
+
+  test("works for TBA India Ops too", () => {
+    const { subject, text } = buildRegionalWelcomeEmail({ ...REGIONAL, title: "TBA India Ops" });
+    assert.ok(subject.includes("TBA India Ops") && text.includes("as TBA India Ops."));
+  });
+
+  test("no secrets beyond the temporary password: no SMTP credentials, env names or tokens", () => {
+    process.env.SMTP_PASS = "smtp-secret-xyz";
+    try {
+      const { subject, text, html } = buildRegionalWelcomeEmail(REGIONAL);
+      const all = subject + text + html;
+      assert.ok(!all.includes("smtp-secret-xyz"));
+      assert.doesNotMatch(all, /SMTP|APP_APK_URL|APP_URL|api[_ ]?key|token/i);
+      // The only password-like value present is the one passed in.
+      assert.equal(text.split("Temp-Pass-42").length - 1, 1, "the password appears once in the text body");
+    } finally {
+      delete process.env.SMTP_PASS;
+    }
+  });
+
+  test("HTML-unsafe input is escaped", () => {
+    const { html } = buildRegionalWelcomeEmail({ ...REGIONAL, name: "<script>x</script>", title: 'A&"B' });
+    assert.ok(!html.includes("<script>"));
+    assert.ok(html.includes("&lt;script&gt;") && html.includes("A&amp;&quot;B"));
   });
 });
 
