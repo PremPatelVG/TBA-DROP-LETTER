@@ -21,7 +21,7 @@ if (process.argv[2] === "demo") {
   cpSync(new URL("icons/", pub), new URL("icons/", dir), { recursive: true });
   writeFileSync(
     new URL("sw.js", dir),
-    `const C = "tba-demo-v1";
+    `const C = "tba-demo-v2";
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", (e) => {
@@ -43,7 +43,10 @@ self.addEventListener("fetch", (e) => {
     '<meta name="apple-mobile-web-app-title" content="Drop Letter">',
     '<script>if("serviceWorker" in navigator)addEventListener("load",()=>navigator.serviceWorker.register("/sw.js"));</script>',
   ].join("\n");
-  html = html.replace("</head>", head + "\n</head>");
+  // The inlined JS bundle itself contains the text "</head>" (the Excel library), so insert before the LAST one,
+  // which is the page's real </head>. Replacing the first one breaks the script and leaves a blank page.
+  const end = html.lastIndexOf("</head>");
+  html = html.slice(0, end) + head + "\n" + html.slice(end);
   writeFileSync(index, html);
   console.log(`preview/dist-demo/index.html ${(html.length / 1024).toFixed(0)} KB`);
   console.log("Netlify Drop: drag the folder preview/dist-demo onto https://app.netlify.com/drop");
