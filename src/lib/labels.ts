@@ -19,3 +19,10 @@ export function regionalTitle(scope_type: OpsScopeType | null, scope_value: stri
   if ((scope_type === "state" || scope_type === "city") && scope_value) return `${scope_value} President`;
   return "Regional account";
 }
+
+/** How a response status reads in filters, tables and the Excel export. */
+export const RESPONSE_STATUS_LABEL: Record<"pending" | "responded" | "not_interested", string> = {
+  pending: "No response yet",
+  responded: "Responded",
+  not_interested: "Not interested",
+};

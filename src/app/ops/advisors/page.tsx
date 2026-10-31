@@ -4,8 +4,9 @@ import { api } from "@/lib/data";
 import { btn2Cls, btnCls, cardCls, errMsg, Field, inputCls, Notice, useData, useUser } from "@/components/ui";
 import { ResetPasswordDialog, type ResetTarget } from "@/components/reset-password-dialog";
 import { WelcomeEmailPreviewDialog } from "@/components/welcome-email-preview";
+import { EditAccountDialog } from "@/components/edit-account-dialog";
 import { isEmail, passwordError } from "@/lib/validate";
-import type { WelcomeEmailPreview } from "@/lib/data";
+import type { Profile, WelcomeEmailPreview } from "@/lib/data";
 
 export default function Advisors() {
   const user = useUser();
@@ -20,6 +21,7 @@ export default function Advisors() {
   const [msg, setMsg] = useState<{ kind: "ok" | "error" | "info"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
   const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
+  const [editTarget, setEditTarget] = useState<Profile | null>(null);
   // The last advisor's welcome email, kept so the admin can (re)open its preview. Demo only; see createAdvisor.
   const [emailPreview, setEmailPreview] = useState<WelcomeEmailPreview | null>(null);
   const [showEmail, setShowEmail] = useState(false);
@@ -94,16 +96,17 @@ export default function Advisors() {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-600"><tr>
                 <th className="p-3 font-medium">ID</th><th className="p-3 font-medium">Name</th><th className="p-3 font-medium">Email</th>
-                <th className="p-3 font-medium">City</th><th className="p-3 font-medium">State</th><th className="p-3 font-medium">Status</th>
+                <th className="p-3 font-medium">Phone</th><th className="p-3 font-medium">City</th><th className="p-3 font-medium">State</th><th className="p-3 font-medium">Status</th>
               </tr></thead>
               <tbody>
                 {data.advisors.map((a) => (
                   <tr key={a.id} className={`border-t align-top ${a.active ? "" : "bg-slate-50 text-slate-500"}`}>
                     <td className="p-3 font-mono">{a.advisor_code}</td><td className="whitespace-nowrap p-3">{a.full_name}</td>
-                    <td className="whitespace-nowrap p-3">{a.email}</td><td className="p-3">{a.city}</td><td className="p-3">{a.state}</td>
+                    <td className="whitespace-nowrap p-3">{a.email}</td><td className="whitespace-nowrap p-3 tabular-nums">{a.phone ?? "-"}</td><td className="p-3">{a.city}</td><td className="p-3">{a.state}</td>
                     <td className="whitespace-nowrap p-3">
                       {a.active ? "Active" : "Deactivated"}{" "}
-                      <button className="text-xs text-green-700 underline"
+                      <button className="text-xs text-green-700 underline" onClick={() => setEditTarget(a)}>Edit</button>
+                      <button className="ml-2 text-xs text-green-700 underline"
                         onClick={() => api.setUserActive(a.id, !a.active).then(reload, (e) => setMsg({ kind: "error", text: errMsg(e) }))}>
                         {a.active ? "Deactivate" : "Reactivate"}
                       </button>
@@ -161,6 +164,8 @@ export default function Advisors() {
       <ResetPasswordDialog target={resetTarget} onClose={() => setResetTarget(null)}
         onDone={(text) => { setResetTarget(null); setMsg({ kind: "ok", text }); reload(); }} />
       <WelcomeEmailPreviewDialog email={showEmail ? emailPreview : null} onClose={() => setShowEmail(false)} />
+      <EditAccountDialog target={editTarget} onClose={() => setEditTarget(null)}
+        onDone={(text) => { setEditTarget(null); setMsg({ kind: "ok", text }); reload(); }} />
     </div>
   );
 }

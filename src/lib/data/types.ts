@@ -5,6 +5,13 @@ import type { BeltThresholds } from "@/lib/belts";
 export type Role = "advisor" | "operations" | "master";
 export const isAdminRole = (r: Role) => r === "operations" || r === "master";
 export type ResponseType = "call" | "email" | "none";
+/**
+ * Where a letter stands with the company: still waiting (pending), the company replied with interest
+ * (responded), or the company said no (not_interested). Only "responded" counts as a response in the
+ * response rate; none of them count toward belts (belts count entries).
+ */
+export type ResponseStatus = "pending" | "responded" | "not_interested";
+export const RESPONSE_STATUSES: ResponseStatus[] = ["pending", "responded", "not_interested"];
 
 /**
  * The tier of a regional (operations) account — one role with three scope levels, top to bottom:
@@ -32,6 +39,8 @@ export type Profile = {
   state: string | null;
   /** Advisor postal code (optional). */
   zip: string | null;
+  /** Contact phone (optional; set from Edit account). Not used for sign-in. */
+  phone: string | null;
   /** Operations accounts only: the tier assigned (national, a whole state, or a single city); null otherwise. */
   scope_type: OpsScopeType | null;
   /** State/city operations accounts: the assigned state or city name. Null for national ops, master and advisors. */
@@ -53,6 +62,11 @@ export type DropInput = {
 };
 
 export type DropResponse = {
+  /**
+   * pending / responded / not_interested. `responded` is kept in step (true exactly when the status is
+   * "responded"). A "not interested" letter has a date and optional notes, no contact method or contact details.
+   */
+  response_status: ResponseStatus;
   responded: boolean;
   response_type: ResponseType;
   response_date: string | null;
@@ -86,14 +100,11 @@ export type DropFilter = {
   q?: string;
   city?: string;
   building?: string;
-  /**
-   * Response-status filter: true = only letters the company responded to, false = only those not yet
-   * responded to (pending). Left out = both. (`responded` is a flag on each drop; see {@link DropResponse}.)
-   */
-  responded?: boolean;
+  /** Response-status filter: pending, responded or not interested. Left out = all. */
+  status?: ResponseStatus;
   /**
    * Contact-method filter, matched against each drop's `response_type`: "call" or "email" (a responded
-   * letter), or "none" (a letter not yet responded to). Left out = any method. Combines with `responded`.
+   * letter), or "none" (pending or not interested). Left out = any method. Combines with `status`.
    */
   method?: ResponseType;
 };
@@ -101,13 +112,14 @@ export type DropFilter = {
 /** Opaque position for "show more"; pass back what the previous page returned. */
 export type Cursor = unknown;
 export type DropPage = { rows: Drop[]; cursor: Cursor | null };
-export type DropCounts = { letters: number; responses: number };
+export type DropCounts = { letters: number; responses: number; notInterested: number };
 
-export type AdvisorSummary = { letters: number; responses: number; buildings: number; weekLetters: number };
+export type AdvisorSummary = { letters: number; responses: number; notInterested: number; buildings: number; weekLetters: number };
 export type MonthRow = { key: string; label: string; letters: number; responses: number };
 export type OpsSummary = {
   letters: number;
   responses: number;
+  notInterested: number;
   buildings: number;
   months: MonthRow[];
   perAdvisor: Record<string, AdvisorSummary>;
@@ -140,6 +152,22 @@ export type Lead = LeadInput & { id: string; advisor_id: string; region_city: st
 /** `password` is the initial sign-in password the admin sets; the account is provisioned in Firebase Auth with it. */
 export type NewOpsUser = { full_name: string; email: string; scope_type: OpsScopeType; scope_value: string; password: string };
 export type NewAdvisor = { full_name: string; advisor_code: string; email: string; city: string; state: string; zip: string | null; password: string };
+
+/**
+ * Edit account: the details an admin may change on an existing account. The login email, the role, the advisor ID
+ * and a regional account's tier stay fixed. Advisors: name, phone, city, state, zip. Regional accounts: name,
+ * phone and (state/city tiers) the state or city they manage. Authorised by canEditAccount (src/lib/data/authz.ts).
+ */
+export type AccountEdit = {
+  full_name: string;
+  phone: string | null;
+  /** Advisors only. */
+  city?: string;
+  state?: string;
+  zip?: string | null;
+  /** State/city regional accounts only: the state or city managed. */
+  scope_value?: string;
+};
 
 /** The rendered welcome email shown as a preview in the demo (envelope + subject + body). */
 export type WelcomeEmailPreview = { from: string; to: string; subject: string; text: string; html: string };
@@ -223,6 +251,12 @@ export interface DataApi {
    * temporary password, since the original is never stored. Authorised by canResendWelcome. The demo returns a preview.
    */
   resendWelcomeEmail(id: string): Promise<WelcomeEmailResult>;
+  /**
+   * Edit an existing advisor or regional account (name, phone, region). The login email stays fixed. Authorised by
+   * canEditAccount: the same people who already manage the account. A regional account moving an advisor must keep
+   * them inside its own scope. Returns the updated profile.
+   */
+  updateAccount(id: string, input: AccountEdit): Promise<Profile>;
 
   /** Newest first. Returns up to `limit` rows and a cursor for the next page (null when there are no more). */
   findDrops(filter: DropFilter, page: { limit: number; cursor?: Cursor | null }): Promise<DropPage>;

@@ -4,7 +4,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { MIN_PASSWORD_LENGTH, passwordError } from "../../src/lib/validate.ts";
-import { accessFor, canCreateAdvisor, canEditBeltThresholds, canManageRegionalAccount, canManageRegionalAccounts, manageableRegionalTiers, canResendWelcome, canResetPassword, canSetUserActive, inOpsScope, passwordSignIn } from "../../src/lib/data/authz.ts";
+import { accessFor, canCreateAdvisor, canEditAccount, canEditBeltThresholds, canManageRegionalAccount, canManageRegionalAccounts, manageableRegionalTiers, canResendWelcome, canResetPassword, canSetUserActive, inOpsScope, passwordSignIn } from "../../src/lib/data/authz.ts";
 
 // A minimal access-list entry; only the fields these functions read need to be set.
 const profile = (over) => ({
@@ -320,5 +320,44 @@ describe("canResendWelcome on regional accounts: follows canManageRegionalAccoun
     for (const actor of [master, opsNational, opsGujarat, opsRajkot, advisorActor]) {
       for (const tier of ["national", "state", "city", null]) assert.equal(canResendWelcome(actor, t(tier)), canManageRegionalAccount(actor, tier));
     }
+  });
+});
+
+describe("canEditAccount: whoever already manages an account may edit it", () => {
+  const master = { role: "master", scope_type: null, scope_value: null };
+  const opsNational = { role: "operations", scope_type: "national", scope_value: null };
+  const opsGujarat = { role: "operations", scope_type: "state", scope_value: "Gujarat" };
+  const opsRajkot = { role: "operations", scope_type: "city", scope_value: "Rajkot" };
+  const advisorActor = { role: "advisor", scope_type: null, scope_value: null };
+  const advRajkot = { role: "advisor", city: "Rajkot", state: "Gujarat" };
+  const advAhmedabad = { role: "advisor", city: "Ahmedabad", state: "Gujarat" };
+  const advMumbai = { role: "advisor", city: "Mumbai", state: "Maharashtra" };
+  const nationalAcct = { role: "operations", city: null, state: null, scope_type: "national" };
+  const stateAcct = { role: "operations", city: null, state: null, scope_type: "state" };
+  const cityAcct = { role: "operations", city: null, state: null, scope_type: "city" };
+  const theMaster = { role: "master", city: null, state: null };
+
+  test("master edits every advisor and regional account, never the master", () => {
+    for (const t of [advRajkot, advMumbai, nationalAcct, stateAcct, cityAcct]) assert.equal(canEditAccount(master, t), true);
+    assert.equal(canEditAccount(master, theMaster), false);
+  });
+  test("India Ops edits any advisor and state/city accounts, not national accounts or master", () => {
+    for (const t of [advRajkot, advMumbai, stateAcct, cityAcct]) assert.equal(canEditAccount(opsNational, t), true);
+    assert.equal(canEditAccount(opsNational, nationalAcct), false);
+    assert.equal(canEditAccount(opsNational, theMaster), false);
+  });
+  test("Presidents edit only advisors in their own region, and no regional accounts", () => {
+    assert.equal(canEditAccount(opsGujarat, advRajkot), true);
+    assert.equal(canEditAccount(opsGujarat, advAhmedabad), true);
+    assert.equal(canEditAccount(opsGujarat, advMumbai), false);
+    assert.equal(canEditAccount(opsRajkot, advRajkot), true);
+    assert.equal(canEditAccount(opsRajkot, advAhmedabad), false);
+    for (const t of [stateAcct, cityAcct, nationalAcct]) {
+      assert.equal(canEditAccount(opsGujarat, t), false);
+      assert.equal(canEditAccount(opsRajkot, t), false);
+    }
+  });
+  test("advisors edit nobody", () => {
+    for (const t of [advRajkot, stateAcct, theMaster]) assert.equal(canEditAccount(advisorActor, t), false);
   });
 });

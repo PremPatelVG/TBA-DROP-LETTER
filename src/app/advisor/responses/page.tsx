@@ -6,7 +6,7 @@ import { btn2Cls, DropCard, inputCls, Notice, ShowMore, useDropPages } from "@/c
 
 const PAGE = 50;
 // Kept while the app is open, so coming back from a drop shows the same search.
-let remembered = { q: "", date: "", responded: "", method: "" };
+let remembered = { q: "", date: "", status: "", method: "" };
 
 function Saved() {
   return useSearchParams().get("saved") ? <div className="mb-4"><Notice kind="ok">Response saved.</Notice></div> : null;
@@ -16,19 +16,19 @@ function Saved() {
 export default function LogResponse() {
   const [q, setQ] = useState(remembered.q);
   const [date, setDate] = useState(remembered.date);
-  const [responded, setResponded] = useState(remembered.responded);
+  const [status, setStatus] = useState(remembered.status);
   const [method, setMethod] = useState(remembered.method);
   const [term, setTerm] = useState(remembered.q);
   useEffect(() => {
-    remembered = { q, date, responded, method };
+    remembered = { q, date, status, method };
     const t = setTimeout(() => setTerm(q), 250);
     return () => clearTimeout(t);
-  }, [q, date, responded, method]);
+  }, [q, date, status, method]);
 
-  const searching = Boolean(term.trim() || date || responded || method);
+  const searching = Boolean(term.trim() || date || status || method);
   const found = useDropPages({
     q: term.trim() || undefined, from: date || undefined, to: date || undefined,
-    responded: responded ? responded === "yes" : undefined,
+    status: (status || undefined) as DropFilter["status"],
     method: (method || undefined) as DropFilter["method"],
   }, searching ? PAGE : 20);
   const rows = found.rows;
@@ -37,7 +37,7 @@ export default function LogResponse() {
     <>
       <Suspense><Saved /></Suspense>
       <h1 className="mb-1 text-xl font-semibold">Log response</h1>
-      <p className="mb-4 text-sm text-slate-600">Find the letter the company replied to, then record the call or email.</p>
+      <p className="mb-4 text-sm text-slate-600">Find the letter the company replied to, then record the call or email, or mark it not interested.</p>
       <div className="mb-4 space-y-3 rounded-lg border bg-white p-4">
         <label className="block text-sm font-medium" htmlFor="response-search">Search
           <input id="response-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off"
@@ -45,10 +45,11 @@ export default function LogResponse() {
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm font-medium" htmlFor="response-status">Response
-            <select id="response-status" value={responded} onChange={(e) => setResponded(e.target.value)} className={inputCls}>
+            <select id="response-status" value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
               <option value="">All</option>
-              <option value="yes">Responded &mdash; Yes</option>
-              <option value="no">Not yet responded</option>
+              <option value="responded">Responded &mdash; Yes</option>
+              <option value="not_interested">Not interested</option>
+              <option value="pending">No response yet</option>
             </select>
           </label>
           <label className="block text-sm font-medium" htmlFor="response-method">Contact method
@@ -64,7 +65,7 @@ export default function LogResponse() {
           <label className="block flex-1 text-sm font-medium" htmlFor="response-date">Date of drop
             <input id="response-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
           </label>
-          {(q || date || responded || method) && <button type="button" className={`${btn2Cls} mb-0.5`} onClick={() => { setQ(""); setTerm(""); setDate(""); setResponded(""); setMethod(""); }}>Clear</button>}
+          {(q || date || status || method) && <button type="button" className={`${btn2Cls} mb-0.5`} onClick={() => { setQ(""); setTerm(""); setDate(""); setStatus(""); setMethod(""); }}>Clear</button>}
         </div>
       </div>
 

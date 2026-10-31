@@ -4,10 +4,11 @@ import { api, type Cursor, type Drop, type DropCounts, type DropFilter, type Pro
 import { cityKey } from "@/lib/search";
 import { rate } from "@/lib/stats";
 import { saveFile } from "@/lib/save-file";
+import { RESPONSE_STATUS_LABEL } from "@/lib/labels";
 import { btn2Cls, btnCls, dropBg, errMsg, inputCls, Notice, ShowMore, useData, useDropPages } from "@/components/ui";
 
 const th = "p-3 font-medium";
-const empty = { advisor: "", from: "", to: "", city: "", building: "", q: "", responded: "", method: "" };
+const empty = { advisor: "", from: "", to: "", city: "", building: "", q: "", status: "", method: "" };
 const PAGE = 200;
 const EXPORT_BATCH = 500;
 const EXPORT_MAX = 50_000;
@@ -25,6 +26,7 @@ async function exportXlsx(rows: Drop[], advisors: Map<string, Profile>) {
     Area: d.area ?? "",
     City: d.city ?? "",
     Address: d.full_address ?? "",
+    Status: RESPONSE_STATUS_LABEL[d.response_status],
     Responded: d.responded ? "Yes" : "No",
     "Response type": d.response_type,
     "Response date": d.response_date ?? "",
@@ -62,7 +64,7 @@ export default function AllDrops() {
   const filter: DropFilter = {
     advisorId: f.advisor || undefined, from: f.from || undefined, to: f.to || undefined,
     city: f.city || undefined, building: f.building || undefined, q: f.q.trim() || undefined,
-    responded: f.responded ? f.responded === "yes" : undefined,
+    status: (f.status || undefined) as DropFilter["status"],
     method: (f.method || undefined) as DropFilter["method"],
   };
   const key = JSON.stringify(filter);
@@ -117,7 +119,7 @@ export default function AllDrops() {
         <div>
           <h1 className="text-xl font-semibold">All drops</h1>
           <p className="text-sm text-slate-600 tabular-nums">
-            {c ? `${plural(c.letters, "letter")} · ${plural(c.responses, "response")} (${rate(c.responses, c.letters)}%)`
+            {c ? `${plural(c.letters, "letter")} · ${plural(c.responses, "response")} (${rate(c.responses, c.letters)}%) · ${c.notInterested.toLocaleString("en-IN")} not interested`
               : rows && c === null ? `${plural(rows.length, "letter")}${page.hasMore ? "+" : ""} shown (totals need a single search word)`
               : "Counting..."}
           </p>
@@ -151,10 +153,11 @@ export default function AllDrops() {
           </select>
         </label>
         <label className="block text-sm font-medium">Response
-          <select value={f.responded} onChange={set("responded")} className={inputCls}>
+          <select value={f.status} onChange={set("status")} className={inputCls}>
             <option value="">All</option>
-            <option value="yes">Responded &mdash; Yes</option>
-            <option value="no">Not yet responded</option>
+            <option value="responded">Responded &mdash; Yes</option>
+            <option value="not_interested">Not interested</option>
+            <option value="pending">No response yet</option>
           </select>
         </label>
         <label className="block text-sm font-medium">Contact method
@@ -179,7 +182,7 @@ export default function AllDrops() {
           </tr></thead>
           <tbody>
             {(rows ?? []).map((r) => (
-              <tr key={r.id} className={`border-t ${dropBg(r.responded)}`}>
+              <tr key={r.id} className={`border-t ${dropBg(r.response_status)}`}>
                 <td className="whitespace-nowrap p-3">{r.drop_date}</td>
                 <td className="whitespace-nowrap p-3">{advisorMap.get(r.advisor_id)?.full_name} <span className="text-slate-500">{advisorMap.get(r.advisor_id)?.advisor_code}</span></td>
                 <td className="whitespace-nowrap p-3 font-medium tabular-nums">{r.office_number}</td>
@@ -187,7 +190,8 @@ export default function AllDrops() {
                 <td className="p-3">{r.building_name}</td>
                 <td className="p-3">{r.block_no}</td>
                 <td className="p-3">{[r.area, r.city].filter(Boolean).join(", ") || "-"}</td>
-                <td className="whitespace-nowrap p-3">{r.responded ? <span className="font-medium text-green-700">{r.response_type} · {r.response_date}</span> : "-"}</td>
+                <td className="whitespace-nowrap p-3">{r.responded ? <span className="font-medium text-green-700">{r.response_type} · {r.response_date}</span>
+                  : r.response_status === "not_interested" ? <span className="font-medium text-rose-700">Not interested · {r.response_date}</span> : "-"}</td>
                 <td className="whitespace-nowrap p-3 tabular-nums">{r.response_phone ?? (r.responded ? "-" : "")}</td>
                 <td className="p-3 break-all">{r.response_email ?? (r.responded ? "-" : "")}</td>
               </tr>

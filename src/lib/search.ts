@@ -91,17 +91,23 @@ export function matchesPlace(d: Pick<Drop, "building_name" | "city">, f: { build
   return true;
 }
 
+/** A drop's response status, also for older records saved before the status existed (derived from `responded`). */
+export function responseStatusOf(d: { response_status?: Drop["response_status"] | null; responded: boolean }): Drop["response_status"] {
+  if (d.response_status === "responded" || d.response_status === "not_interested" || d.response_status === "pending") return d.response_status;
+  return d.responded ? "responded" : "pending";
+}
+
 /**
  * Response-status and contact-method filters, shared by the demo data and the Firebase data layer.
- * `responded` matches the drop's `responded` flag (true = responded, false = not yet); `method` matches
- * its `response_type` ("call"/"email" for a responded letter, "none" for one not yet responded to).
- * Both are optional and combine; a responded/method pair that cannot co-exist simply matches nothing.
+ * `status` matches the drop's response status (pending / responded / not_interested); `method` matches its
+ * `response_type` ("call"/"email" for a responded letter, "none" for a pending or not-interested one).
+ * Both are optional and combine; a status/method pair that cannot co-exist simply matches nothing.
  */
 export function matchesResponse(
-  d: Pick<Drop, "responded" | "response_type">,
-  f: { responded?: boolean; method?: Drop["response_type"] },
+  d: Pick<Drop, "responded" | "response_type"> & { response_status?: Drop["response_status"] },
+  f: { status?: Drop["response_status"]; method?: Drop["response_type"] },
 ) {
-  if (typeof f.responded === "boolean" && d.responded !== f.responded) return false;
+  if (f.status && responseStatusOf(d) !== f.status) return false;
   if (f.method && d.response_type !== f.method) return false;
   return true;
 }

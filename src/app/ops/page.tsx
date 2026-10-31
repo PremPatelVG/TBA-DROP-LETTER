@@ -25,7 +25,7 @@ export default function OpsDashboard() {
   return (
     <>
       <h1 className="mb-4 text-xl font-semibold">Operations dashboard</h1>
-      <StatCards t={{ letters: s.letters, buildings: s.buildings, responses: s.responses, rate: rate(s.responses, s.letters) }} />
+      <StatCards t={{ letters: s.letters, buildings: s.buildings, responses: s.responses, notInterested: s.notInterested, rate: rate(s.responses, s.letters) }} />
 
       <section className={`${cardCls} mb-6 p-4`}>
         <h2 className="mb-4 text-lg font-semibold">Month-wise analytics</h2>

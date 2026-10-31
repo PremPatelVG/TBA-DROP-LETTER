@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
-import { api, type OpsScopeType, type WelcomeEmailPreview, type WelcomeEmailResult } from "@/lib/data";
+import { api, type OpsScopeType, type Profile, type WelcomeEmailPreview, type WelcomeEmailResult } from "@/lib/data";
 import { regionalTitle, scopeLabel } from "@/lib/labels";
 import { btn2Cls, btnCls, cardCls, errMsg, Field, inputCls, Notice, useData, useUser } from "@/components/ui";
-import { canManageRegionalAccount, canResendWelcome, manageableRegionalTiers } from "@/lib/data/authz";
+import { canEditAccount, canManageRegionalAccount, canResendWelcome, manageableRegionalTiers } from "@/lib/data/authz";
+import { EditAccountDialog } from "@/components/edit-account-dialog";
 import { WelcomeEmailPreviewDialog } from "@/components/welcome-email-preview";
 import { ResetPasswordDialog, type ResetTarget } from "@/components/reset-password-dialog";
 import { isEmail, passwordError } from "@/lib/validate";
@@ -32,6 +33,7 @@ export default function RegionalAccounts() {
   const [pending, setPending] = useState(false);
   const [scopeType, setScopeType] = useState<OpsScopeType>("state");
   const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
+  const [editTarget, setEditTarget] = useState<Profile | null>(null);
   const needsRegion = scopeType !== "national";
 
   async function create(e: React.FormEvent<HTMLFormElement>) {
@@ -101,24 +103,26 @@ export default function RegionalAccounts() {
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
       <section>
         <h1 className="mb-1 text-xl font-semibold">Regional accounts</h1>
-        <p className="mb-4 text-sm text-slate-600">{isMaster ? "Master adds and manages every tier; TBA India Ops adds and manages state and city accounts." : "As TBA India Ops you can add, deactivate and reset state and city accounts. National accounts are managed by master."} One role, three tiers: <span className="font-medium">TBA India Ops</span> (national — every region), a <span className="font-medium">State president</span> (one whole state) or a <span className="font-medium">City president</span> (one city). Each account adds advisors within its own scope; only master edits the belt thresholds.</p>
+        <p className="mb-4 text-sm text-slate-600">{isMaster ? "Master adds and manages every tier; TBA India Ops adds and manages state and city accounts." : "As TBA India Ops you can add, edit, deactivate and reset state and city accounts. National accounts are managed by master."} One role, three tiers: <span className="font-medium">TBA India Ops</span> (national — every region), a <span className="font-medium">State president</span> (one whole state) or a <span className="font-medium">City president</span> (one city). Each account adds advisors within its own scope; only master edits the belt thresholds.</p>
         {error && <Notice kind="error">{error}</Notice>}
         {!data ? <p className="text-slate-500">Loading...</p> : (
           <div className="overflow-x-auto rounded-lg border bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-600"><tr>
                 <th className="p-3 font-medium">Title</th><th className="p-3 font-medium">Name</th><th className="p-3 font-medium">Email</th>
-                <th className="p-3 font-medium">Scope</th><th className="p-3 font-medium">Status</th><th className="p-3 font-medium"><span className="sr-only">Actions</span></th>
+                <th className="p-3 font-medium">Phone</th><th className="p-3 font-medium">Scope</th><th className="p-3 font-medium">Status</th><th className="p-3 font-medium"><span className="sr-only">Actions</span></th>
               </tr></thead>
               <tbody>
                 {data.map((u) => (
                   <tr key={u.id} className={`border-t ${u.active ? "" : "bg-slate-50 text-slate-500"}`}>
                     <td className="p-3 font-medium">{regionalTitle(u.scope_type, u.scope_value)}</td>
                     <td className="p-3">{u.full_name}</td><td className="p-3">{u.email}</td>
+                    <td className="whitespace-nowrap p-3 tabular-nums">{u.phone ?? "-"}</td>
                     <td className="p-3">{scopeLabel(u.scope_type, u.scope_value)}</td>
                     <td className="p-3">{u.active ? <span className="text-green-700">Active</span> : "Deactivated"}</td>
                     <td className="p-3 text-right">
                       {canManageRegionalAccount(user, u.scope_type) && u.id !== user.id && <div className="flex justify-end gap-2">
+                        {canEditAccount(user, u) && <button className={btn2Cls} onClick={() => setEditTarget(u)}>Edit</button>}
                         {u.active && canResendWelcome(user, u) && <button className={btn2Cls} onClick={() => resend(u.id, u.full_name, u.email)}>Resend welcome email</button>}
                         <button className={btn2Cls} onClick={() => setResetTarget({ id: u.id, full_name: u.full_name, email: u.email })}>Reset password</button>
                         <button className={btn2Cls} onClick={() => toggle(u.id, !u.active)}>{u.active ? "Deactivate" : "Reactivate"}</button>
@@ -126,7 +130,7 @@ export default function RegionalAccounts() {
                     </td>
                   </tr>
                 ))}
-                {data.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-slate-500">No regional accounts yet.</td></tr>}
+                {data.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-slate-500">No regional accounts yet.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -156,6 +160,8 @@ export default function RegionalAccounts() {
       <WelcomeEmailPreviewDialog email={showEmail ? emailPreview : null} onClose={() => setShowEmail(false)} />
       <ResetPasswordDialog target={resetTarget} onClose={() => setResetTarget(null)}
         onDone={(text) => { setResetTarget(null); setMsg({ kind: "ok", text }); }} />
+      <EditAccountDialog target={editTarget} onClose={() => setEditTarget(null)}
+        onDone={(text) => { setEditTarget(null); setMsg({ kind: "ok", text }); reload(); }} />
     </div>
   );
 }

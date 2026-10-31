@@ -14,7 +14,7 @@ export type MockDb = {
 };
 
 /** Bump when the shape or volume of the sample data changes; old browser data is then replaced. */
-export const MOCK_VERSION = 12;
+export const MOCK_VERSION = 13;
 
 /** The password every demo account shares. DEMO ONLY — shown on the sign-in screen so the password flow can be tried. */
 export const DEMO_PASSWORD = "demo1234";
@@ -61,7 +61,8 @@ const NAME_A = ["Shree", "Om", "Jay", "Sai", "Krishna", "Mahalaxmi", "Siddhi", "
 const NAME_B = ["Traders", "Enterprises", "Exports", "Infotech", "Associates", "Consultants", "Textiles", "Chemicals", "Industries", "Logistics",
   "Pharma", "Realty", "Solutions", "& Co.", "Diamonds", "Agencies", "Tax Consultants", "Finserv", "Engineering", "Impex"];
 const NOTES = ["Asked for a callback next week", "Wants the brochure by email", "Interested in tax planning", "Meeting fixed for Saturday",
-  "Requested pricing details", "Not interested right now", "Asked about SIP options", "Will visit the office"];
+  "Requested pricing details", "Asked about SIP options", "Will visit the office"];
+const DECLINE_NOTES = ["Not interested right now", "Already has an advisor", "Asked not to be contacted", "No budget this year"];
 
 const PEOPLE = ["rahul", "priya", "amit", "neha", "vikas", "pooja", "kunal", "sneha", "jignesh", "hetal", "mehul", "krupa"];
 const MAILBOXES = ["info", "accounts", "admin", "contact", "office"];
@@ -121,7 +122,7 @@ export function buildSeed(): MockDb {
   const createdIso = (daysAgo: number) => new Date(parseYmd(addDays(todayStr, -daysAgo)) + 9 * 3600000).toISOString();
 
   const admin = (over: Partial<Profile> & Pick<Profile, "id" | "role" | "full_name" | "email">): Profile => ({
-    advisor_code: null, city: null, state: null, zip: null, scope_type: null, scope_value: null,
+    advisor_code: null, city: null, state: null, zip: null, phone: null, scope_type: null, scope_value: null,
     active: true, created_at: createdIso(120), ...over,
   });
   const profiles: Profile[] = [
@@ -135,7 +136,7 @@ export function buildSeed(): MockDb {
     admin({ id: "u-ops-ahd", role: "operations", full_name: "Ahmedabad President", email: "ahmedabad.ops@example.com", scope_type: "city", scope_value: "Ahmedabad" }),
     ...ADVISORS.map((a): Profile => ({
       id: a.id, role: "advisor", full_name: a.name, email: `${a.name.toLowerCase().replace(/[^a-z]/g, ".")}@example.com`,
-      advisor_code: a.code, city: a.city, state: a.state, zip: a.zip, scope_type: null, scope_value: null,
+      advisor_code: a.code, city: a.city, state: a.state, zip: a.zip, phone: null, scope_type: null, scope_value: null,
       active: true, created_at: createdIso(90),
     })),
   ];
@@ -175,6 +176,9 @@ export function buildSeed(): MockDb {
       const responded = age >= 2 && rand() < 0.25;
       const respDate = responded ? addDays(dateStr, 1 + Math.floor(rand() * Math.min(10, age - 1))) : null;
       const type = responded ? (rand() < 0.65 ? "call" : "email") : "none";
+      // Some older letters that got no positive response were declined: "Not interested", with a date.
+      const declined = !responded && age >= 2 && rand() < 0.12;
+      const declinedDate = declined ? addDays(dateStr, 1 + Math.floor(rand() * Math.min(10, age - 1))) : null;
       // Callers leave a number (sometimes an email too); emails come with an address (sometimes a number).
       const phone = type === "call" || (type === "email" && rand() < 0.3) ? phoneNumber() : null;
       const email = type === "email" || (type === "call" && rand() < 0.25) ? emailFor(company) : null;
@@ -194,10 +198,11 @@ export function buildSeed(): MockDb {
         drop_date: dateStr,
         region_city: city,
         region_state: state,
+        response_status: responded ? "responded" : declined ? "not_interested" : "pending",
         responded,
         response_type: type,
-        response_date: respDate,
-        response_notes: responded ? pick(NOTES) : null,
+        response_date: respDate ?? declinedDate,
+        response_notes: responded ? pick(NOTES) : declined ? pick(DECLINE_NOTES) : null,
         response_phone: phone,
         response_email: email,
         created_at: created.toISOString(),
@@ -245,7 +250,7 @@ export function buildSeed(): MockDb {
     id: `d-${++seq}`, advisor_id: "u-adv1", office_number: "301-302", company_name: "Vasant Group", building_name: "Shivalik Shilp",
     block_no: "A", area: "Ahmedabad", city: null, full_address: null, drop_date: exampleDay,
     region_city: "Ahmedabad", region_state: GUJARAT,
-    responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null,
+    response_status: "pending", responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null,
     created_at: new Date(Math.min(parseYmd(exampleDay) + (9 * 60 + 30 - IST_OFFSET_MIN) * 60_000, now.getTime() - 60_000)).toISOString(),
   });
 

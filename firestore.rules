@@ -86,7 +86,7 @@ service cloud.firestore {
 
     function dropKeys() {
       return ['advisor_id', 'office_number', 'company_name', 'building_name', 'block_no', 'area', 'city', 'full_address',
-              'region_city', 'region_state', 'drop_date', 'responded', 'response_type', 'response_date', 'response_notes',
+              'region_city', 'region_state', 'drop_date', 'response_status', 'responded', 'response_type', 'response_date', 'response_notes',
               'response_phone', 'response_email', 'created_at', 'search_tokens'];
     }
     function validDrop(d) {
@@ -101,16 +101,23 @@ service cloud.firestore {
         && optText(d.response_notes, 2000)
         && validResponse(d);
     }
-    // A letter marked as responded needs a date and the responder's phone number or email (or both).
+    // Three statuses, with `responded` kept in step. Pending: no date, method or contact. Not interested (the company
+    // said no): a date on or after the drop, no method or contact. Responded: call or email, a date, and the
+    // responder's phone number or email (or both).
     function validResponse(d) {
-      return d.responded == false
-        ? d.response_type == 'none' && d.response_date == null && d.response_phone == null && d.response_email == null
-        : d.responded == true
-          && d.response_type in ['call', 'email']
-          && isDate(d.response_date) && d.response_date >= d.drop_date
-          && (filled(d.response_phone) || filled(d.response_email))
-          && (d.response_phone == null || (d.response_phone is string && d.response_phone.size() <= 30 && isPhone(d.response_phone)))
-          && (d.response_email == null || (d.response_email is string && d.response_email.size() <= 200 && isEmail(d.response_email)));
+      return d.response_status == 'pending'
+        ? d.responded == false && d.response_type == 'none' && d.response_date == null
+          && d.response_phone == null && d.response_email == null
+        : d.response_status == 'not_interested'
+          ? d.responded == false && d.response_type == 'none'
+            && isDate(d.response_date) && d.response_date >= d.drop_date
+            && d.response_phone == null && d.response_email == null
+          : d.response_status == 'responded' && d.responded == true
+            && d.response_type in ['call', 'email']
+            && isDate(d.response_date) && d.response_date >= d.drop_date
+            && (filled(d.response_phone) || filled(d.response_email))
+            && (d.response_phone == null || (d.response_phone is string && d.response_phone.size() <= 30 && isPhone(d.response_phone)))
+            && (d.response_email == null || (d.response_email is string && d.response_email.size() <= 200 && isEmail(d.response_email)));
     }
 
     match /drops/{dropId} {

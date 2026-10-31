@@ -164,7 +164,7 @@ try {
     await page.fill("#response-search", "1204 e2e");
     await page.getByText("1 matching letter").waitFor();
     await page.locator("main li a").first().click();
-    await page.getByLabel("Yes", { exact: true }).check();
+    await page.getByLabel("Responded", { exact: true }).check();
     await page.getByRole("button", { name: "Save response" }).click();
     await page.locator("#response-error").waitFor();
     await page.fill("#response_phone", "+91 98765 43210");
@@ -173,6 +173,7 @@ try {
     assert.ok(/bg-green-50/.test(await page.locator("main li a").first().getAttribute("class")));
     const after = (await db.doc(`drops/${saved.docs[0].id}`).get()).data();
     assert.equal(after.responded, true);
+    assert.equal(after.response_status, "responded");
     assert.equal(after.response_phone, "+91 98765 43210");
     await shot("02-advisor-response");
   });

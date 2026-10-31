@@ -14,11 +14,11 @@ const person = (role, uid, extra = {}) => ({ role, uid, active: true, full_name:
 const drop = (advisorId, extra = {}) => ({
   advisor_id: advisorId, office_number: "301-302", company_name: "Vasant Group", building_name: "Shivalik Shilp", block_no: "A",
   area: null, city: "Rajkot", full_address: null, region_city: "Rajkot", region_state: "Gujarat", drop_date: "2026-09-28",
-  responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null,
+  response_status: "pending", responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null,
   created_at: Timestamp.fromDate(new Date("2026-09-28T10:00:00+05:30")), search_tokens: ["3", "30", "301", "vasant", "b:shivalik-shilp"],
   ...extra,
 });
-const responded = (extra = {}) => ({ responded: true, response_type: "call", response_date: "2026-09-29", response_notes: "Called back", ...extra });
+const responded = (extra = {}) => ({ response_status: "responded", responded: true, response_type: "call", response_date: "2026-09-29", response_notes: "Called back", ...extra });
 const lead = (advisorId, extra = {}) => ({
   advisor_id: advisorId, contact_name: "Mr. Patel", company_name: null, phone: "+91 98765 43210", email: null, notes: null,
   lead_date: "2026-09-29", drop_id: null, region_city: "Rajkot", region_state: "Gujarat", created_at: Timestamp.now(), ...extra,
@@ -168,6 +168,22 @@ describe("drop fields", () => {
     await assertFails(create(drop("adv1", responded({ response_phone: "9876543210", response_date: "2026-09-01" }))), "before the drop date");
     await assertFails(create(drop("adv1", responded({ response_phone: "9876543210", response_type: "none" }))));
     await assertFails(create(drop("adv1", { response_phone: "9876543210" })), "contact without a response");
+    await assertFails(create(drop("adv1", responded({ response_phone: "9876543210", response_status: "pending" }))), "status out of step");
+    await assertFails(create(drop("adv1", { response_status: "responded" })), "responded status without the details");
+  });
+  test("not interested: a date on or after the drop, no method or contact", async () => {
+    const no = (extra = {}) => ({ response_status: "not_interested", responded: false, response_type: "none", response_date: "2026-09-30", response_notes: "Already has an advisor", ...extra });
+    await assertSucceeds(create(drop("adv1", no())));
+    await assertSucceeds(create(drop("adv1", no({ response_notes: null }))));
+    await assertFails(create(drop("adv1", no({ response_date: null }))), "needs a date");
+    await assertFails(create(drop("adv1", no({ response_date: "2026-09-01" }))), "before the drop date");
+    await assertFails(create(drop("adv1", no({ responded: true }))), "not counted as responded");
+    await assertFails(create(drop("adv1", no({ response_type: "call" }))), "no contact method");
+    await assertFails(create(drop("adv1", no({ response_phone: "9876543210" }))), "no contact details");
+    await assertFails(create(drop("adv1", no({ response_status: "maybe" }))), "unknown status");
+    const missing = drop("adv1");
+    delete missing.response_status;
+    await assertFails(create(missing), "status is required");
   });
 });
 
@@ -193,6 +209,7 @@ describe("operations and master: reads, and no writes to drops or leads", () => 
     await assertSucceeds(getDocs(query(collection(db, "drops"), orderBy("drop_date", "desc"))));
     for (const id of ["d1", "d2", "d3"]) await assertSucceeds(getDoc(doc(db, `drops/${id}`)));
     await assertSucceeds(getCountFromServer(query(collection(db, "drops"), where("responded", "==", true))));
+    await assertSucceeds(getCountFromServer(query(collection(db, "drops"), where("response_status", "==", "not_interested"))));
     await assertSucceeds(getDocs(collection(db, "direct_leads")));
     await assertSucceeds(getDocs(collection(db, "buildings")));
     await assertSucceeds(getDocs(collection(db, "weekly_results")));

@@ -34,7 +34,7 @@ export default function AdvisorHome() {
       <Suspense><Saved /></Suspense>
       <h1 className="mb-4 text-xl font-semibold">My dashboard</h1>
       {s ? (
-        <StatCards t={{ letters: s.letters, buildings: s.buildings, responses: s.responses, rate: rate(s.responses, s.letters) }} compact />
+        <StatCards t={{ letters: s.letters, buildings: s.buildings, responses: s.responses, notInterested: s.notInterested, rate: rate(s.responses, s.letters) }} compact />
       ) : (
         <div className="mb-6"><Notice kind="info">Totals and weekly progress need an internet connection. Your drops below still work offline.</Notice></div>
       )}

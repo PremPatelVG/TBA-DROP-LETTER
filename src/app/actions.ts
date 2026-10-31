@@ -9,12 +9,12 @@
 import { FieldValue, Timestamp, type DocumentReference, type DocumentSnapshot } from "firebase-admin/firestore";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
-import { isEmail, passwordError } from "@/lib/validate";
-import { canCreateAdvisor, canManageRegionalAccount, canResendWelcome, canResetPassword, canSetUserActive } from "@/lib/data/authz";
+import { isEmail, isIndianPhone, passwordError } from "@/lib/validate";
+import { canCreateAdvisor, canEditAccount, canManageRegionalAccount, canResendWelcome, canResetPassword, canSetUserActive } from "@/lib/data/authz";
 import { sendRegionalWelcomeEmail, sendWelcomeEmail, welcomeEmailNotReady } from "@/lib/email.server";
 import { randomBytes } from "node:crypto";
 import { regionalTitle } from "@/lib/labels";
-import type { AdvisorCreated, OpsUserCreated, NewAdvisor, WelcomeEmailResult, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
+import type { AccountEdit, AdvisorCreated, OpsUserCreated, NewAdvisor, WelcomeEmailResult, NewOpsUser, OpsScopeType, Profile, Role } from "@/lib/data/types";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export type ClaimResult =
@@ -41,6 +41,7 @@ function toProfile(snap: DocumentSnapshot): Profile {
     city: d.city ?? null,
     state: d.state ?? null,
     zip: d.zip ?? null,
+    phone: d.phone ?? null,
     scope_type: d.scope_type ?? null,
     scope_value: d.scope_value ?? null,
     active: d.active === true,
@@ -398,5 +399,60 @@ export async function resendWelcomeEmail(idToken: string, id: string): Promise<A
       return sendRegionalWelcomeEmail({ name: t.full_name ?? "", title, email: t.email, password: pw });
     }
     return sendWelcomeEmail({ name: t.full_name ?? "", advisorId: t.advisor_code ?? "", email: t.email, password: pw });
+  });
+}
+
+/**
+ * Edit an existing advisor or regional account: name, phone and region. The login email, role, advisor ID and a
+ * regional account's tier stay fixed. Authorised by {@link canEditAccount} — the same people who already manage the
+ * account (master: everyone but master; national: any advisor plus state/city accounts; a state/city account:
+ * advisors in its own region). A state/city account moving an advisor keeps them inside its region (its scoped
+ * dimension is forced and the new region is checked with canCreateAdvisor). When a region changes, the person's
+ * custom claims are re-set and their sessions revoked, so the security rules see the new region at once.
+ */
+export async function updateAccount(idToken: string, id: string, input: AccountEdit): Promise<ActionResult<Profile>> {
+  return run("save the account", async () => {
+    const me = await caller(idToken, ["operations", "master"]);
+    const ref = adminDb().collection("users").doc(id);
+    const t = (await ref.get()).data();
+    if (!t) throw new Refusal("User not found.");
+    const target = { role: t.role as Role, city: (t.city ?? null) as string | null, state: (t.state ?? null) as string | null, scope_type: (t.scope_type ?? null) as Profile["scope_type"] };
+    if (!canEditAccount(me, target)) {
+      throw new Refusal(t.role === "advisor" ? "You can only edit advisors in your own region." : "You are not allowed to edit this account.");
+    }
+    const full_name = text(input.full_name, "Name", 100);
+    const phone = optInput(input.phone, "Phone", 30);
+    if (phone && !isIndianPhone(phone)) throw new Refusal("Phone number: use 10 digits, optionally starting with +91, for example +91 98765 43210.");
+    const patch: Record<string, unknown> = { full_name, phone };
+    let regionChanged = false;
+    if (t.role === "advisor") {
+      let city = text(input.city, "City", 100);
+      let state = text(input.state, "State", 100);
+      if (me.role === "operations") {
+        if (me.scope_type === "city") city = text(me.scope_value, "City", 100);
+        else if (me.scope_type === "state") state = text(me.scope_value, "State", 100);
+      }
+      if (!canCreateAdvisor(me, { city, state })) throw new Refusal("You can only move advisors within your own region.");
+      Object.assign(patch, { city, state, zip: optInput(input.zip, "Zip code", 16) });
+      regionChanged = city !== t.city || state !== t.state;
+    } else if (t.scope_type === "state" || t.scope_type === "city") {
+      const scope_value = text(input.scope_value, t.scope_type === "state" ? "State" : "City", 100);
+      patch.scope_value = scope_value;
+      regionChanged = scope_value !== t.scope_value;
+    }
+    await ref.update({ ...patch, updated_at: FieldValue.serverTimestamp(), updated_by: me.pid });
+    const uid = typeof t.uid === "string" ? t.uid : null;
+    if (uid) {
+      const auth = adminAuth();
+      const ignoreMissing = (e: unknown) => { if (code(e) !== "auth/user-not-found") throw e; };
+      await auth.updateUser(uid, { displayName: full_name }).catch(ignoreMissing);
+      if (regionChanged) {
+        // New drops must be filed in the new region and a regional account must see its new scope: re-set the
+        // claims the rules read, and end current sessions so the next sign-in picks them up.
+        await auth.setCustomUserClaims(uid, claimsFor({ ...t, ...patch }, id)).catch(ignoreMissing);
+        await auth.revokeRefreshTokens(uid).catch(ignoreMissing);
+      }
+    }
+    return toProfile(await ref.get());
   });
 }

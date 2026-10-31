@@ -1,16 +1,16 @@
-import { buildingKey, matchesDropSearch, matchesPlace, matchesResponse } from "@/lib/search";
+import { buildingKey, matchesDropSearch, matchesPlace, matchesResponse, responseStatusOf } from "@/lib/search";
 import { lastMonths, totals } from "@/lib/stats";
-import { passwordError } from "@/lib/validate";
+import { isIndianPhone, normaliseResponse, passwordError } from "@/lib/validate";
 import { beltThresholdsError, DEFAULT_BELT_THRESHOLDS } from "@/lib/belts";
 import { regionalTitle, scopeLabel } from "@/lib/labels";
 import { buildRegionalWelcomeEmail, buildWelcomeEmail, DEFAULT_MAIL_FROM } from "@/lib/email";
 import { buildSeed, DEMO_PASSWORD, DEMO_UNLISTED, MOCK_VERSION, type MockDb } from "./mock-seed";
-import { accessFor, canCreateAdvisor, canManageRegionalAccount, canManageRegionalAccounts, canResendWelcome, canResetPassword, canSetUserActive, passwordSignIn } from "./authz";
+import { accessFor, canCreateAdvisor, canEditAccount, canManageRegionalAccount, canManageRegionalAccounts, canResendWelcome, canResetPassword, canSetUserActive, passwordSignIn } from "./authz";
 import { isAdminRole, type AccessResult, type DataApi, type Drop, type DropFilter, type Profile, type WelcomeEmailPreview, type WelcomeEmailResult } from "./types";
 
 // Versioned key: bumping it leaves old browser data behind and loads fresh sample data.
-const DB_KEY = "tba.mock.db.v11";
-const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7", "tba.mock.db.v8", "tba.mock.db.v9", "tba.mock.db.v10"];
+const DB_KEY = "tba.mock.db.v13";
+const OLD_KEYS = ["tba.mock.db", "tba.mock.db.v3", "tba.mock.db.v4", "tba.mock.db.v5", "tba.mock.db.v6", "tba.mock.db.v7", "tba.mock.db.v8", "tba.mock.db.v9", "tba.mock.db.v10", "tba.mock.db.v11"];
 const SESSION_KEY = "tba.mock.session.email";
 
 /**
@@ -187,7 +187,7 @@ export const mockApi: DataApi = {
     if (!canCreateAdvisor(actor, { city, state })) throw new Error("You can only add advisors in your own region.");
     const p: Profile = {
       id: uid("u"), role: "advisor", full_name: input.full_name.trim(), email, advisor_code: code,
-      city, state, zip, scope_type: null, scope_value: null, active: true, created_at: new Date().toISOString(),
+      city, state, zip, phone: null, scope_type: null, scope_value: null, active: true, created_at: new Date().toISOString(),
     };
     db.profiles.push(p);
     db.passwords[email] = input.password; // demo: the account can now sign in with email + password
@@ -222,7 +222,7 @@ export const mockApi: DataApi = {
     }
     const p: Profile = {
       id: uid("u"), role: "operations", full_name: input.full_name.trim(), email, advisor_code: null,
-      city: null, state: null, zip: null, scope_type: input.scope_type, scope_value, active: true, created_at: new Date().toISOString(),
+      city: null, state: null, zip: null, phone: null, scope_type: input.scope_type, scope_value, active: true, created_at: new Date().toISOString(),
     };
     db.profiles.push(p);
     db.passwords[email] = input.password; // demo: the account can now sign in with email + password
@@ -271,6 +271,41 @@ export const mockApi: DataApi = {
     save();
     return wait({ status: "preview", preview: welcomePreview(target, password) } as WelcomeEmailResult);
   },
+  async updateAccount(id, input) {
+    const actor = requireOps();
+    const db = load();
+    const target = db.profiles.find((p) => p.id === id);
+    if (!target) throw new Error("User not found.");
+    // Same rule as the server: whoever already manages the account may edit it (never the master account).
+    if (!canEditAccount(actor, target)) throw new Error(target.role === "advisor" ? "You can only edit advisors in your own region." : "You are not allowed to edit this account.");
+    const full_name = input.full_name.trim().replace(/\s+/g, " ");
+    if (!full_name) throw new Error("Name is required.");
+    const phone = input.phone?.trim() || null;
+    if (phone && !isIndianPhone(phone)) throw new Error("Phone number: use 10 digits, optionally starting with +91, for example +91 98765 43210.");
+    if (target.role === "advisor") {
+      let city = (input.city ?? "").trim();
+      let state = (input.state ?? "").trim();
+      // A state/city account keeps its advisors inside its own region: force the scoped dimension, as on create.
+      if (actor.role === "operations") {
+        if (actor.scope_type === "city" && actor.scope_value) city = actor.scope_value;
+        else if (actor.scope_type === "state" && actor.scope_value) state = actor.scope_value;
+      }
+      if (!city) throw new Error("City is required.");
+      if (!state) throw new Error("State is required.");
+      if (!canCreateAdvisor(actor, { city, state })) throw new Error("You can only move advisors within your own region.");
+      Object.assign(target, { full_name, phone, city, state, zip: input.zip?.trim() || null });
+    } else {
+      const patch: Partial<Profile> = { full_name, phone };
+      if (target.scope_type === "state" || target.scope_type === "city") {
+        const v = (input.scope_value ?? "").trim();
+        if (!v) throw new Error(`${target.scope_type === "state" ? "State" : "City"} is required.`);
+        patch.scope_value = v;
+      }
+      Object.assign(target, patch);
+    }
+    save();
+    return wait({ ...target });
+  },
 
   async findDrops(f, { limit, cursor }) {
     const start = typeof cursor === "number" ? cursor : 0;
@@ -280,7 +315,7 @@ export const mockApi: DataApi = {
   },
   async countDrops(f) {
     const rows = filtered(f);
-    return wait({ letters: rows.length, responses: rows.filter((d) => d.responded).length });
+    return wait({ letters: rows.length, responses: rows.filter((d) => d.responded).length, notInterested: rows.filter((d) => responseStatusOf(d) === "not_interested").length });
   },
   async getDrop(id) { return wait(visibleDrops(load().drops).find((d) => d.id === id) ?? null); },
   async createDrop(input) {
@@ -288,7 +323,7 @@ export const mockApi: DataApi = {
     if (p.role !== "advisor") throw new Error("Only advisors log drops");
     const d: Drop = {
       ...input, id: uid("d"), advisor_id: p.id, region_city: p.city, region_state: p.state, created_at: new Date().toISOString(),
-      responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null,
+      response_status: "pending", responded: false, response_type: "none", response_date: null, response_notes: null, response_phone: null, response_email: null,
     };
     load().drops.push(d);
     save();
@@ -297,11 +332,11 @@ export const mockApi: DataApi = {
   async updateDropResponse(id, r) {
     const d = visibleDrops(load().drops).find((x) => x.id === id);
     if (!d) throw new Error("Drop not found.");
-    // Same rule as the security rules: a responded letter needs the responder's phone number or email.
-    if (r.responded && !r.response_phone?.trim() && !r.response_email?.trim()) {
-      throw new Error("Add the phone number or email of the person who responded.");
-    }
-    Object.assign(d, r);
+    // Same rules as the security rules: a responded letter needs the responder's phone number or email; a
+    // not-interested one needs a date; the stored shape follows the status.
+    const { value, error } = normaliseResponse(r);
+    if (error) throw new Error(error);
+    Object.assign(d, value);
     save();
     return wait(undefined);
   },
@@ -317,7 +352,7 @@ export const mockApi: DataApi = {
   async advisorSummary(advisorId, week) {
     const rows = visibleDrops(load().drops, advisorId);
     const t = totals(rows);
-    return wait({ letters: t.letters, responses: t.responses, buildings: t.buildings, weekLetters: rows.filter((d) => d.drop_date >= week.start && d.drop_date <= week.end).length });
+    return wait({ letters: t.letters, responses: t.responses, notInterested: t.notInterested, buildings: t.buildings, weekLetters: rows.filter((d) => d.drop_date >= week.start && d.drop_date <= week.end).length });
   },
   async opsSummary(week, advisorIds) {
     const actor = requireOps();
@@ -331,9 +366,9 @@ export const mockApi: DataApi = {
     const perAdvisor = Object.fromEntries(advisorIds.map((id) => {
       const rows = all.filter((d) => d.advisor_id === id);
       const a = totals(rows);
-      return [id, { letters: a.letters, responses: a.responses, buildings: a.buildings, weekLetters: rows.filter((d) => d.drop_date >= week.start && d.drop_date <= week.end).length }];
+      return [id, { letters: a.letters, responses: a.responses, notInterested: a.notInterested, buildings: a.buildings, weekLetters: rows.filter((d) => d.drop_date >= week.start && d.drop_date <= week.end).length }];
     }));
-    return wait({ letters: t.letters, responses: t.responses, buildings: t.buildings, months, perAdvisor });
+    return wait({ letters: t.letters, responses: t.responses, notInterested: t.notInterested, buildings: t.buildings, months, perAdvisor });
   },
   async beltLeaderboard(week) {
     const viewer = me(); // any signed-in user may read the leaderboard (advisors included)

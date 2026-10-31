@@ -2,9 +2,12 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
-import { api, type Drop } from "@/lib/data";
+import { api, type Drop, type ResponseStatus } from "@/lib/data";
 import { btnCls, dropPlace, errMsg, fmtDate, inputCls, Notice, today, useData } from "@/components/ui";
 import { responseContactError } from "@/lib/validate";
+import { RESPONSE_STATUS_LABEL } from "@/lib/labels";
+
+const STATUS_CHOICES: ResponseStatus[] = ["responded", "not_interested", "pending"];
 
 export default function DropResponsePage() {
   return <Suspense><DropResponse /></Suspense>;
@@ -24,7 +27,9 @@ function DropResponse() {
 
 function ResponseForm({ drop, back }: { drop: Drop | null; back: string }) {
   const router = useRouter();
-  const [responded, setResponded] = useState(drop?.responded ?? false);
+  const [status, setStatus] = useState<ResponseStatus>(drop?.response_status ?? "pending");
+  const responded = status === "responded";
+  const declined = status === "not_interested";
   // Kept in state so switching to "No" and back does not lose what was typed.
   const [phone, setPhone] = useState(drop?.response_phone ?? "");
   const [email, setEmail] = useState(drop?.response_email ?? "");
@@ -47,10 +52,12 @@ function ResponseForm({ drop, back }: { drop: Drop | null; back: string }) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const s = (k: string) => String(f.get(k) ?? "").trim();
-    if (responded) {
+    if (responded || declined) {
       const date = s("response_date");
-      if (!date) return fail({ field: "date", message: "Enter the response date." });
-      if (date < d.drop_date || date > today()) return fail({ field: "date", message: `The response date must be between ${fmtDate(d.drop_date)} and today.` });
+      if (!date) return fail({ field: "date", message: responded ? "Enter the response date." : "Enter the date they said they were not interested." });
+      if (date < d.drop_date || date > today()) return fail({ field: "date", message: `The date must be between ${fmtDate(d.drop_date)} and today.` });
+    }
+    if (responded) {
       const contact = responseContactError(true, phone, email);
       if (contact) return fail(contact);
     }
@@ -58,9 +65,10 @@ function ResponseForm({ drop, back }: { drop: Drop | null; back: string }) {
     setError(null);
     try {
       await api.updateDropResponse(d.id, {
+        response_status: status,
         responded,
         response_type: responded ? (s("response_type") as "call" | "email") : "none",
-        response_date: responded ? s("response_date") : null,
+        response_date: responded || declined ? s("response_date") : null,
         response_notes: s("response_notes") || null,
         response_phone: responded ? phone.trim() || null : null,
         response_email: responded ? email.trim() || null : null,
@@ -88,18 +96,24 @@ function ResponseForm({ drop, back }: { drop: Drop | null; back: string }) {
         {dropPlace(d)}{where && <><br />{where}</>}{d.full_address && <><br />{d.full_address}</>}
         <br />Dropped on {fmtDate(d.drop_date)}
       </p>
-      <form noValidate onSubmit={submit} className={`space-y-4 rounded-lg border p-4 ${responded ? "border-green-200 bg-green-50" : "bg-white"}`}>
+      <form noValidate onSubmit={submit} className={`space-y-4 rounded-lg border p-4 ${responded ? "border-green-200 bg-green-50" : declined ? "border-rose-200 bg-rose-50" : "bg-white"}`}>
         <fieldset>
-          <legend className="text-sm font-medium">Responded?</legend>
-          <div className="mt-2 flex gap-3">
-            {([true, false] as const).map((v) => (
-              <label key={String(v)} className="flex flex-1 items-center justify-center gap-2 rounded-md border bg-white px-3 py-2.5">
-                <input type="radio" name="responded" checked={responded === v} onChange={() => { setResponded(v); setError(null); }} />
-                {v ? "Yes" : "No"}
+          <legend className="text-sm font-medium">Response</legend>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {STATUS_CHOICES.map((v) => (
+              <label key={v} className="flex items-center justify-center gap-2 rounded-md border bg-white px-2 py-2.5 text-center text-sm">
+                <input type="radio" name="response_status" checked={status === v} onChange={() => { setStatus(v); setError(null); }} />
+                {v === "responded" ? "Responded" : RESPONSE_STATUS_LABEL[v]}
               </label>
             ))}
           </div>
         </fieldset>
+        {declined && (
+          <label className="block text-sm font-medium" htmlFor="response_date">Date they said no
+            <input ref={dateRef} id="response_date" type="date" name="response_date" min={d.drop_date} max={today()}
+              defaultValue={d.response_date ?? today()} className={inputErr} {...invalid("date")} />
+          </label>
+        )}
         {responded && (
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium">Response type

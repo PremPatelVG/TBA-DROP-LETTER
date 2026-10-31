@@ -60,7 +60,7 @@ function addDrop(advisorId, d, minutes) {
   const day = new Date(`${d.drop_date}T10:00:00`);
   day.setMinutes(minutes);
   const drop = {
-    advisor_id: advisorId, area: null, city: null, full_address: null, responded: false, response_type: "none", response_date: null,
+    advisor_id: advisorId, area: null, city: null, full_address: null, response_status: "pending", responded: false, response_type: "none", response_date: null,
     response_notes: null, response_phone: null, response_email: null, ...d,
     // The creating advisor's own city and state, denormalized for city- and state-scoped operations accounts.
     region_city: owner.city, region_state: owner.state,
@@ -87,7 +87,7 @@ for (const [advisorId, city, perDay] of PLAN) {
         office_number: `${floor}${String(i + 1).padStart(2, "0")}`, company_name: pick(COMPANIES), building_name: building,
         block_no: pick(["A", "B"]), area, city: rand() < 0.8 ? city : null, drop_date: ymd(day),
         ...(answered ? {
-          responded: true, response_type: "call", response_date: ymd(daysAgo(ago - 1)), response_notes: "Asked for a callback",
+          response_status: "responded", responded: true, response_type: "call", response_date: ymd(daysAgo(ago - 1)), response_notes: "Asked for a callback",
           response_phone: `+91 98${String(Math.floor(rand() * 1e8)).padStart(8, "0")}`,
         } : {}),
       }, i * 4);

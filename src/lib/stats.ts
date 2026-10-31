@@ -1,19 +1,20 @@
-import { buildingKey } from "@/lib/search";
+import { buildingKey, responseStatusOf } from "@/lib/search";
 
 // One drop entry is one letter, so every count below is a count of entries.
-export type StatDrop = { advisor_id: string; building_name: string; responded: boolean; drop_date: string };
-export type Totals = { letters: number; buildings: number; responses: number; rate: number };
+export type StatDrop = { advisor_id: string; building_name: string; responded: boolean; response_status?: "pending" | "responded" | "not_interested"; drop_date: string };
+export type Totals = { letters: number; buildings: number; responses: number; notInterested: number; rate: number };
 
 /** Response rate in percent with one decimal: responded letters / letters. */
 export const rate = (responses: number, letters: number) => (letters ? Math.round((responses / letters) * 1000) / 10 : 0);
 
-/** Letters = entries. Buildings = distinct building names. */
+/** Letters = entries. Buildings = distinct building names. Not interested = letters the company declined. */
 export function totals(drops: StatDrop[]): Totals {
   const responses = drops.filter((d) => d.responded).length;
   return {
     letters: drops.length,
     buildings: new Set(drops.map((d) => buildingKey(d.building_name))).size,
     responses,
+    notInterested: drops.filter((d) => responseStatusOf(d) === "not_interested").length,
     rate: rate(responses, drops.length),
   };
 }

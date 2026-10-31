@@ -37,12 +37,13 @@ import {
   resendWelcomeEmail as resendWelcomeEmailAction,
   resetUserPassword as resetUserPasswordAction,
   setUserActive as setUserActiveAction,
+  updateAccount as updateAccountAction,
   type ActionResult,
   type ClaimResult,
 } from "@/app/actions";
-import { buildingKey, cityKey, dropIndexTokens, matchesDropSearch, matchesPlace, matchesResponse, MAX_TOKEN_LENGTH, queryToken, searchTerms } from "@/lib/search";
+import { buildingKey, cityKey, dropIndexTokens, matchesDropSearch, matchesPlace, matchesResponse, MAX_TOKEN_LENGTH, queryToken, responseStatusOf, searchTerms } from "@/lib/search";
 import { lastMonths } from "@/lib/stats";
-import { responseContactError } from "@/lib/validate";
+import { normaliseResponse } from "@/lib/validate";
 import { beltThresholdsError, DEFAULT_BELT_THRESHOLDS, type BeltThresholds } from "@/lib/belts";
 import type { AccessResult, AdvisorSummary, BuildingRef, DataApi, Drop, DropFilter, Lead, LeaderboardRow, Profile } from "./types";
 
@@ -96,7 +97,7 @@ function toProfile(snap: DocumentSnapshot): Profile {
   const d = snap.data() ?? {};
   return {
     id: snap.id, role: d.role, full_name: d.full_name ?? "", email: d.email ?? "", advisor_code: d.advisor_code ?? null,
-    city: d.city ?? null, state: d.state ?? null, zip: d.zip ?? null,
+    city: d.city ?? null, state: d.state ?? null, zip: d.zip ?? null, phone: d.phone ?? null,
     scope_type: d.scope_type ?? null, scope_value: d.scope_value ?? null,
     active: d.active === true, created_at: iso(d.created_at),
   };
@@ -266,6 +267,7 @@ function toDrop(snap: DocumentSnapshot): Drop {
     id: snap.id, advisor_id: d.advisor_id, office_number: d.office_number, company_name: d.company_name, building_name: d.building_name,
     block_no: d.block_no, area: d.area ?? null, city: d.city ?? null, full_address: d.full_address ?? null, drop_date: d.drop_date,
     region_city: d.region_city ?? null, region_state: d.region_state ?? null,
+    response_status: responseStatusOf({ response_status: d.response_status, responded: d.responded === true }),
     responded: d.responded === true, response_type: d.response_type ?? "none", response_date: d.response_date ?? null,
     response_notes: d.response_notes ?? null, response_phone: d.response_phone ?? null, response_email: d.response_email ?? null,
     created_at: iso(d.created_at),
@@ -286,20 +288,19 @@ function scopeWhere(cityField: string, stateField: string): QueryConstraint[] {
 }
 
 /**
- * The response-status and contact-method filters as a single Firestore equality. A drop's `responded` flag
- * and its `response_type` move together (not responded ⇔ "none"; responded ⇔ "call"/"email"), so one
- * equality captures both: the method when it is set ("call"/"email" on response_type, "none" reusing the
- * responded index), otherwise the status on responded. A status + method pair that cannot co-exist (e.g.
- * responded + "none") matches nothing — `empty` says so, and the caller skips the query.
+ * The response-status and contact-method filters as a single Firestore equality. A drop's status and its
+ * `response_type` move together (responded ⇔ "call"/"email"; pending or not interested ⇔ "none"), so one
+ * equality captures both: the status when it is set (a method of "none" is then implied by pending or not
+ * interested), otherwise the method. A status + method pair that cannot co-exist (e.g. responded + "none", or
+ * not interested + "call") matches nothing — `empty` says so, and the caller skips the query.
  */
 function responseWhere(f: DropFilter): { constraints: QueryConstraint[]; empty: boolean } {
-  const methodResponded = f.method ? f.method !== "none" : undefined; // "none" ⇒ not responded; "call"/"email" ⇒ responded
-  if (typeof f.responded === "boolean" && methodResponded !== undefined && f.responded !== methodResponded) {
+  if (f.status && f.method && (f.status === "responded") !== (f.method !== "none")) {
     return { constraints: [], empty: true }; // contradictory status + method: nothing can match
   }
-  if (f.method === "none") return { constraints: [where("responded", "==", false)], empty: false };
+  if (f.status === "responded" && f.method) return { constraints: [where("response_type", "==", f.method)], empty: false };
+  if (f.status) return { constraints: [where("response_status", "==", f.status)], empty: false };
   if (f.method) return { constraints: [where("response_type", "==", f.method)], empty: false };
-  if (typeof f.responded === "boolean") return { constraints: [where("responded", "==", f.responded)], empty: false };
   return { constraints: [], empty: false };
 }
 
@@ -318,7 +319,7 @@ function planDrops(f: DropFilter, extra: QueryConstraint[] = []) {
   const token = word ?? place;
   const exact = !word || (terms.length === 1 && terms[0].length <= MAX_TOKEN_LENGTH && !place);
   const response = responseWhere(f);
-  // Field order matches firestore.indexes.json: region_city/region_state, advisor_id, responded/response_type,
+  // Field order matches firestore.indexes.json: region_city/region_state, advisor_id, response_status/response_type,
   // search_tokens, drop_date, created_at. Operations accounts are scoped to their city or state; master sees every region.
   const cs: QueryConstraint[] = [];
   cs.push(...scopeWhere("region_city", "region_state"));
@@ -471,6 +472,9 @@ export const firebaseApi: DataApi = {
   async resendWelcomeEmail(id) {
     return unwrap(await resendWelcomeEmailAction(await idToken(), id));
   },
+  async updateAccount(id, input) {
+    return unwrap(await updateAccountAction(await idToken(), id, input));
+  },
 
   // ----- drops -----
 
@@ -503,19 +507,20 @@ export const firebaseApi: DataApi = {
 
   async countDrops(f) {
     const plan = planDrops(f);
-    if (plan.empty) return { letters: 0, responses: 0 };
+    if (plan.empty) return { letters: 0, responses: 0, notInterested: 0 };
     if (!plan.exact) return null;
     try {
       const letters = await count(plan.query());
-      // Responses = the matching letters that were responded to. When the response filter already pins that
-      // (every match responded, or none did), skip the second count query — and the responded + response_type
-      // composite index it would otherwise need — and derive the figure from `letters`.
-      const allResponded = f.responded === true || f.method === "call" || f.method === "email";
-      const noneResponded = f.responded === false || f.method === "none";
-      const responses = allResponded ? letters
-        : noneResponded ? 0
-        : await count(planDrops(f, [where("responded", "==", true)]).query());
-      return { letters, responses };
+      // Responses / not interested = the matching letters with that status. When the filter already pins the
+      // status (or the method implies it), derive the figure from `letters` instead of a second count query;
+      // otherwise count with the status added (which replaces the method equality, as the status implies it).
+      const fixed = f.status ?? (f.method === "call" || f.method === "email" ? "responded" : null);
+      const countStatus = (status: "responded" | "not_interested") =>
+        fixed ? (fixed === status ? letters : 0)
+        : status === "responded" && f.method === "none" ? 0
+        : count(planDrops({ ...f, status, method: undefined }).query());
+      const [responses, notInterested] = await Promise.all([countStatus("responded"), countStatus("not_interested")]);
+      return { letters, responses, notInterested };
     } catch (e) {
       if (offline(e)) return null;
       throw e;
@@ -542,7 +547,8 @@ export const firebaseApi: DataApi = {
       ...input, advisor_id: p.id,
       // The advisor's own city and state, denormalized so city- and state-scoped operations accounts can query.
       region_city: p.city, region_state: p.state,
-      responded: false, response_type: "none" as const, response_date: null, response_notes: null, response_phone: null, response_email: null,
+      response_status: "pending" as const, responded: false, response_type: "none" as const,
+      response_date: null, response_notes: null, response_phone: null, response_email: null,
     };
     // One small document per advisor and building, for the building filter and "buildings covered".
     const key = buildingKey(input.building_name);
@@ -556,9 +562,9 @@ export const firebaseApi: DataApi = {
   },
 
   async updateDropResponse(id, r) {
-    const contact = responseContactError(r.responded, r.response_phone ?? "", r.response_email ?? "");
-    if (contact) throw new Error(contact.message);
-    await settle(updateDoc(doc(clientDb(), "drops", id), { ...r }));
+    const { value, error } = normaliseResponse(r);
+    if (error) throw new Error(error);
+    await settle(updateDoc(doc(clientDb(), "drops", id), { ...value }));
   },
 
   async listBuildings() {
@@ -589,21 +595,22 @@ export const firebaseApi: DataApi = {
     const scope = scopeWhere("region_city", "region_state");
     try {
       const months = lastMonths(6);
-      const [letters, responses, buildings, monthRows, perAdvisor] = await Promise.all([
+      const [letters, responses, notInterested, buildings, monthRows, perAdvisor] = await Promise.all([
         count(query(drops, ...scope, ...ORDER)),
-        count(query(drops, ...scope, where("responded", "==", true), ...ORDER)),
+        count(query(drops, ...scope, where("response_status", "==", "responded"), ...ORDER)),
+        count(query(drops, ...scope, where("response_status", "==", "not_interested"), ...ORDER)),
         getDocs(query(collection(db, "buildings"), ...scope)).then((s) => uniqueBuildings(s.docs.map((d) => d.data())).length),
         Promise.all(months.map(async (m) => {
           const range = [where("drop_date", ">=", m.start), where("drop_date", "<=", m.end)];
           const [l, r] = await Promise.all([
             count(query(drops, ...scope, ...range, ...ORDER)),
-            count(query(drops, ...scope, where("responded", "==", true), ...range, ...ORDER)),
+            count(query(drops, ...scope, where("response_status", "==", "responded"), ...range, ...ORDER)),
           ]);
           return { key: m.key, label: m.label, letters: l, responses: r };
         })),
         Promise.all(advisorIds.map(async (id) => [id, await summaryFor(id, week)] as const)),
       ]);
-      return { letters, responses, buildings, months: monthRows, perAdvisor: Object.fromEntries(perAdvisor) };
+      return { letters, responses, notInterested, buildings, months: monthRows, perAdvisor: Object.fromEntries(perAdvisor) };
     } catch (e) {
       if (offline(e)) return null;
       throw e;
@@ -679,7 +686,7 @@ export const firebaseApi: DataApi = {
   },
 };
 
-/** Letters, responses, buildings and this week's letters for one advisor: four count queries. */
+/** Letters, responses, not interested, buildings and this week's letters for one advisor: five count queries. */
 async function summaryFor(id: string, week: { start: string; end: string }): Promise<AdvisorSummary> {
   const db = clientDb();
   const drops = collection(db, "drops");
@@ -687,13 +694,14 @@ async function summaryFor(id: string, week: { start: string; end: string }): Pro
   // An operations account reading another advisor's totals is region-scoped by the rules; an advisor reading
   // their own, and master, add nothing here. (The advisor is already within the scope that found them.)
   const scope = scopeWhere("region_city", "region_state");
-  const [letters, responses, weekLetters, buildings] = await Promise.all([
+  const [letters, responses, notInterested, weekLetters, buildings] = await Promise.all([
     count(query(drops, mine, ...scope, ...ORDER)),
-    count(query(drops, mine, ...scope, where("responded", "==", true), ...ORDER)),
+    count(query(drops, mine, ...scope, where("response_status", "==", "responded"), ...ORDER)),
+    count(query(drops, mine, ...scope, where("response_status", "==", "not_interested"), ...ORDER)),
     count(query(drops, mine, ...scope, where("drop_date", ">=", week.start), where("drop_date", "<=", week.end), ...ORDER)),
     count(query(collection(db, "buildings"), where("advisor_id", "==", id), ...scope)),
   ]);
-  return { letters, responses, buildings, weekLetters };
+  return { letters, responses, notInterested, buildings, weekLetters };
 }
 
 /** Building documents are per advisor; the same building visited by two advisors counts once. */

@@ -14,8 +14,9 @@ export const btnCls = "inline-flex items-center justify-center rounded-md bg-gre
 export const btn2Cls = "inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-50";
 export const cardCls = "rounded-lg border bg-white";
 
-/** Row/card background for a drop: green when a response was received. */
-export const dropBg = (responded: boolean) => (responded ? "bg-green-50 border-green-200" : "bg-white");
+/** Row/card background for a drop: green when the company responded, grey-red when it was not interested. */
+export const dropBg = (status: Drop["response_status"]) =>
+  status === "responded" ? "bg-green-50 border-green-200" : status === "not_interested" ? "bg-rose-50 border-rose-200" : "bg-white";
 
 export const today = () => ymd(new Date());
 export const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -254,17 +255,18 @@ function AdvisorShell({ user, children }: { user: Profile; children: React.React
   );
 }
 
-export function StatCards({ t, compact = false }: { t: { letters: number; buildings: number; responses: number; rate: number }; compact?: boolean }) {
+export function StatCards({ t, compact = false }: { t: { letters: number; buildings: number; responses: number; notInterested: number; rate: number }; compact?: boolean }) {
   const items = [
     ["Letters dropped", t.letters.toLocaleString("en-IN")],
     ["Buildings covered", t.buildings],
     ["Responses", t.responses],
+    ["Not interested", t.notInterested],
     ["Response rate", `${t.rate}%`],
   ] as const;
   return (
-    <div className={`mb-6 grid grid-cols-2 gap-3 ${compact ? "" : "lg:grid-cols-4"}`}>
-      {items.map(([label, value]) => (
-        <div key={label} className={`${cardCls} p-4`}>
+    <div className={`mb-6 grid grid-cols-2 gap-3 ${compact ? "" : "lg:grid-cols-5"}`}>
+      {items.map(([label, value], i) => (
+        <div key={label} className={`${cardCls} p-4 ${i === items.length - 1 ? `col-span-2 ${compact ? "" : "lg:col-span-1"}` : ""}`}>
           <p className="text-xs text-slate-500">{label}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
         </div>
@@ -290,11 +292,11 @@ export function Notice({ kind, children }: { kind: keyof typeof NOTICE; children
 export const dropPlace = (d: Pick<Drop, "office_number" | "block_no" | "building_name">) =>
   `Office ${d.office_number} · Block ${d.block_no} · ${d.building_name}`;
 
-/** Advisor list item for one drop (one letter). Green once the company has responded. */
+/** Advisor list item for one drop (one letter). Green once the company has responded; rose when not interested. */
 export function DropCard({ d, href }: { d: Drop; href: string }) {
   const where = [d.area, d.city].filter(Boolean).join(", ");
   return (
-    <Link href={href} className={`block rounded-lg border p-4 hover:border-green-400 ${dropBg(d.responded)}`}>
+    <Link href={href} className={`block rounded-lg border p-4 hover:border-green-400 ${dropBg(d.response_status)}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-medium">{d.company_name}</p>
@@ -306,11 +308,16 @@ export function DropCard({ d, href }: { d: Drop; href: string }) {
             {d.response_type === "email" ? "Email" : "Call"}
           </span>
         )}
+        {d.response_status === "not_interested" && (
+          <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">Not interested</span>
+        )}
       </div>
       <p className="mt-2 text-xs text-slate-500">
         {fmtDate(d.drop_date)} · {d.responded
           ? <span className="font-medium text-green-700">Responded{d.response_date ? ` on ${fmtDate(d.response_date)}` : ""}</span>
-          : "No response yet"}
+          : d.response_status === "not_interested"
+            ? <span className="font-medium text-rose-700">Not interested{d.response_date ? ` (${fmtDate(d.response_date)})` : ""}</span>
+            : "No response yet"}
       </p>
       {d.responded && (d.response_phone || d.response_email) && (
         <p className="mt-1 truncate text-xs text-green-800">{[d.response_phone, d.response_email].filter(Boolean).join(" · ")}</p>

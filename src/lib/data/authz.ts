@@ -134,3 +134,14 @@ export function canResendWelcome(actor: Actor, target: Target): boolean {
   if (target.role === "operations") return canManageRegionalAccount(actor, target.scope_type ?? null);
   return false;
 }
+
+/**
+ * Whether `actor` may edit `target`'s details (name, phone, region; never the login email). The same people who
+ * already manage the account: advisors as {@link canResetPassword} (master: any; a regional account: advisors in its
+ * own scope, national: any advisor); regional accounts by {@link canManageRegionalAccount} (master: any tier;
+ * national: state and city). Never the master account. Moving an advisor to another region is further checked
+ * with {@link canCreateAdvisor} on the NEW region, so a regional account cannot move an advisor out of its scope.
+ */
+export function canEditAccount(actor: Actor, target: Target): boolean {
+  return canResendWelcome(actor, target);
+}

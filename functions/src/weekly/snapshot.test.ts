@@ -30,7 +30,7 @@ async function addDrops(advisorId: string, monday: string, count: number) {
       batch.set(db.collection("drops").doc(), {
         advisor_id: advisorId, drop_date: day, created_at: Timestamp.fromDate(new Date(`${day}T10:00:00+05:30`)),
         office_number: String(100 + i), company_name: "Test Co", building_name: "Test Tower", block_no: "A",
-        area: null, city: null, full_address: null, responded: false, response_type: "none", response_date: null,
+        area: null, city: null, full_address: null, response_status: "pending", responded: false, response_type: "none", response_date: null,
         response_notes: null, response_phone: null, response_email: null, search_tokens: [],
       });
     }
