@@ -12,7 +12,7 @@
 const VERSION = new URL(self.location.href).searchParams.get("v") || "1";
 const CACHE = `tba-advisor-${VERSION}`;
 const SHELLS = ["/advisor", "/advisor/drops/new", "/advisor/responses", "/advisor/leads", "/advisor/drop"];
-const EXTRAS = ["/advisor.webmanifest", "/icons/advisor-192.png", "/icons/advisor-512.png"];
+const EXTRAS = ["/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 const NETWORK_TIMEOUT_MS = 4000;
 
 /** Script, style and font files a page needs, found in its HTML (tags and the inline route data). */
@@ -108,7 +108,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(staticFile(request));
     return;
   }
-  if (url.pathname === "/advisor.webmanifest" || url.pathname.startsWith("/icons/")) {
+  if (url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/icons/")) {
     event.respondWith(storedThenUpdate(request));
   }
 });

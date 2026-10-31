@@ -9,7 +9,6 @@
     "lint": "eslint",
     "preview:build": "vite build --config preview/vite.config.ts && node preview/finalize.mjs",
     "build:demo": "vite build --config preview/vite.config.ts --mode demo && node preview/finalize.mjs demo",
-    "build:apk": "node scripts/build-apk.mjs",
     "functions:build": "npm --prefix functions run build",
     "emulators": "npm run functions:build && firebase emulators:start --project demo-tba --only auth,firestore,functions,pubsub",
     "emulators:seed": "node --no-warnings scripts/seed-emulators.mjs",
@@ -31,7 +30,6 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@bubblewrap/cli": "^1.25.0",
     "@eslint/eslintrc": "^3",
     "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/postcss": "^4",

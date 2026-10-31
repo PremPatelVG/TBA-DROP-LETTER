@@ -9,7 +9,6 @@ const FIELDS = {
   advisorId: "ADV004",
   email: "asha.patel@example.com",
   password: "advisor-pass-1",
-  apkUrl: "https://app.tbaindia.in/tba-advisor.apk",
   appUrl: "https://portal.example.in",
 };
 
@@ -24,21 +23,21 @@ describe("buildWelcomeEmail: the advisor welcome email", () => {
     assert.equal(m.to, "asha.patel@example.com");
   });
 
-  test("the subject welcomes them and mentions the login and the app download", () => {
+  test("the subject welcomes them and mentions the login and installing the app", () => {
     const { subject } = buildWelcomeEmail(FIELDS);
     assert.match(subject, /welcome/i);
     assert.match(subject, /login/i);
-    assert.match(subject, /download/i);
+    assert.match(subject, /install/i);
   });
 
-  test("the plain-text body carries the username, the password, the Advisor ID and the download link", () => {
+  test("the plain-text body carries the username, the password, the Advisor ID and the app link", () => {
     const { text } = buildWelcomeEmail(FIELDS);
     assert.ok(text.includes("asha.patel@example.com"), "username (email)");
     assert.ok(text.includes("advisor-pass-1"), "initial password");
     assert.ok(text.includes("ADV004"), "Advisor ID");
-    assert.ok(text.includes("https://app.tbaindia.in/tba-advisor.apk"), "APK download link");
+    assert.ok(text.includes("https://portal.example.in"), "app link");
     assert.ok(text.includes("Asha Patel"), "advisor name");
-    assert.match(text, /on your phone/i, "the install-on-your-phone instruction");
+    assert.match(text, /home screen/i, "the add-to-home-screen instruction");
   });
 
   test("the HTML body carries the same details, with the link as a real href", () => {
@@ -46,7 +45,7 @@ describe("buildWelcomeEmail: the advisor welcome email", () => {
     assert.ok(html.includes("asha.patel@example.com"), "username (email)");
     assert.ok(html.includes("advisor-pass-1"), "initial password");
     assert.ok(html.includes("ADV004"), "Advisor ID");
-    assert.ok(html.includes('href="https://app.tbaindia.in/tba-advisor.apk"'), "APK link as an href");
+    assert.ok(html.includes('href="https://portal.example.in"'), "app link as an href");
   });
 
   test("HTML-unsafe characters in the inputs are escaped (no HTML injection)", () => {
@@ -57,13 +56,15 @@ describe("buildWelcomeEmail: the advisor welcome email", () => {
   });
 });
 
-describe("buildWelcomeEmail: portal link and iPhone note (no app stores)", () => {
-  test("the advisor email also carries the web portal link and tells iPhone users to use the website", () => {
+describe("buildWelcomeEmail: add-to-home-screen steps (web only: no APK, no app stores)", () => {
+  test("gives Android and iPhone steps, and never an APK or store link", () => {
     const { text, html } = buildWelcomeEmail(FIELDS);
-    assert.ok(text.includes("https://portal.example.in"));
-    assert.ok(html.includes('href="https://portal.example.in"'));
-    assert.match(text, /iPhone/);
-    assert.match(text, /allow installing apps from this source/i);
+    for (const body of [text, html]) {
+      assert.match(body, /Android: open the link in Chrome/);
+      assert.match(body, /iPhone: open the link in Safari, tap Share/);
+      assert.match(body, /Add to Home Screen/);
+      assert.doesNotMatch(body, /\.apk|Play Store app|download the app/i);
+    }
   });
 });
 
@@ -72,12 +73,11 @@ const REGIONAL = {
   title: "Gujarat President",
   email: "kiran.shah@gmail.com",
   password: "Temp-Pass-42",
-  apkUrl: "https://app.tbaindia.in/tba-advisor.apk",
   appUrl: "https://portal.example.in",
 };
 
 describe("buildRegionalWelcomeEmail: the regional-account (President / TBA India Ops) welcome email", () => {
-  test("text and HTML carry name, title, username, temporary password, portal link and APK link", () => {
+  test("text and HTML carry name, title, username, temporary password, portal link and home-screen steps", () => {
     const { subject, text, html } = buildRegionalWelcomeEmail(REGIONAL);
     assert.match(subject, /welcome/i);
     assert.ok(subject.includes("Gujarat President"));
@@ -87,12 +87,13 @@ describe("buildRegionalWelcomeEmail: the regional-account (President / TBA India
       assert.ok(body.includes("kiran.shah@gmail.com"), "username");
       assert.ok(body.includes("Temp-Pass-42"), "temporary password");
       assert.ok(body.includes("https://portal.example.in"), "portal link");
-      assert.ok(body.includes("https://app.tbaindia.in/tba-advisor.apk"), "APK link");
+      assert.match(body, /Add to Home Screen/, "iPhone steps");
+      assert.doesNotMatch(body, /\.apk/i, "no APK link");
     }
-    assert.ok(html.includes('href="https://portal.example.in"') && html.includes('href="https://app.tbaindia.in/tba-advisor.apk"'), "links are hrefs");
+    assert.ok(html.includes('href="https://portal.example.in"'), "link is an href");
     assert.match(text, /Sign in with Google/);
     assert.match(text, /iPhone/);
-    assert.match(text, /allow installing apps from this source/i);
+    assert.match(text, /Android/);
     assert.doesNotMatch(text, /Advisor ID/, "no advisor fields");
   });
 

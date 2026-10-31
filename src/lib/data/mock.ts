@@ -15,14 +15,13 @@ const SESSION_KEY = "tba.mock.session.email";
 
 /**
  * Clearly-sample links used only in the demo preview of the welcome emails. The real app reads them from the
- * APP_APK_URL and APP_URL env vars (see `email.server.ts`); the demo sends nothing.
+ * APP_URL env var (see `email.server.ts`); the demo sends nothing.
  */
-const DEMO_APK_URL = "https://app.tbaindia.in/tba-advisor.apk";
 const DEMO_APP_URL = "https://app.tbaindia.in";
 
 /** The demo's preview of the welcome email a person would receive (advisor or regional account). */
 function welcomePreview(p: Profile, password: string): WelcomeEmailPreview {
-  const links = { apkUrl: DEMO_APK_URL, appUrl: DEMO_APP_URL };
+  const links = { appUrl: DEMO_APP_URL };
   const body = p.role === "operations"
     ? buildRegionalWelcomeEmail({ name: p.full_name, title: regionalTitle(p.scope_type, p.scope_value), email: p.email, password, ...links })
     : buildWelcomeEmail({ name: p.full_name, advisorId: p.advisor_code ?? "", email: p.email, password, ...links });
@@ -193,7 +192,7 @@ export const mockApi: DataApi = {
     db.passwords[email] = input.password; // demo: the account can now sign in with email + password
     save();
     // Simulate the welcome email (nothing is really sent in the demo) and return it so the admin can preview
-    // exactly what the advisor receives: their login, their password, and the app download link.
+    // exactly what the advisor receives: their login, their password, the app link and the add-to-home-screen steps.
     const welcomeEmail: WelcomeEmailResult = { status: "preview", preview: welcomePreview(p, input.password) };
     return wait({ profile: p, welcomeEmail });
   },

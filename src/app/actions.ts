@@ -366,7 +366,7 @@ export async function resetUserPassword(idToken: string, id: string, newPassword
 }
 
 /**
- * Resend the welcome email to an advisor or a regional account (login + portal + app download link). The original
+ * Resend the welcome email to an advisor or a regional account (login + app link + add-to-home-screen steps). The original
  * password is never stored, so this sets a fresh temporary password on their Firebase Auth user and emails it.
  * Authorised by {@link canResendWelcome}: advisors as {@link resetUserPassword}; regional accounts by
  * canManageRegionalAccount (master: any tier; national: state and city); never the master.

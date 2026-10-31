@@ -1,8 +1,9 @@
 /**
  * Welcome emails: what a new advisor ({@link buildWelcomeEmail}) or a new regional account — a State/City President
  * or TBA India Ops ({@link buildRegionalWelcomeEmail}) — is sent when their account is created: their login (email +
- * the initial/temporary password), the web portal link, and the Android app download link. The app is NOT on the
- * Play Store or App Store: it is distributed directly by this emailed link; iPhone users use the website.
+ * the initial/temporary password), the web portal link, and short steps to add the app to the phone's home screen.
+ * There is no Play Store, App Store or APK: the app is the website, installed as a home-screen app (a PWA) that
+ * opens full screen with the TBA icon on Android and iPhone alike.
  *
  * This module is PURE and runtime-neutral: no `server-only`, no nodemailer, no React, no `process.env`. So the
  * same {@link buildWelcomeEmail} renders the email on the server (to actually send, via `email.server.ts`), in the
@@ -24,8 +25,6 @@ export type WelcomeEmailFields = {
   advisorId: string;
   email: string;
   password: string;
-  /** Where the built Android app (APK) is hosted (APP_APK_URL). */
-  apkUrl: string;
   /** The web portal address (APP_URL), e.g. https://app.tbaindia.in. */
   appUrl: string;
 };
@@ -36,7 +35,6 @@ export type RegionalWelcomeEmailFields = {
   title: string;
   email: string;
   password: string;
-  apkUrl: string;
   appUrl: string;
 };
 
@@ -52,22 +50,40 @@ export interface MailSender {
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-/** One line on installing an app that is not from the Play Store. */
-export const INSTALL_NOTE =
-  "The app is not on the Play Store: if your phone asks, allow installing apps from this source (your browser or Files app), then tap Install.";
-/** iPhone users have no app: they use the website. */
-export const IPHONE_NOTE = "On an iPhone (or any computer), use the web portal above in your browser — there is no iPhone app.";
+/** How to put the app on the home screen, per phone. Kept short: the person reads it on their phone. */
+export const ANDROID_STEPS = 'Android: open the link in Chrome, sign in, then tap "Install app" (or Chrome menu \u22ee, then "Add to Home screen").';
+export const IPHONE_STEPS = 'iPhone: open the link in Safari, tap Share, then "Add to Home Screen".';
+/** After installing: what to expect. */
+export const INSTALLED_NOTE = "The TBA icon then appears on your home screen and opens the app full screen. Nothing to download from a store, and it always opens the latest version.";
 
-const portalHtml = (appUrl: string) => `<h2 style="margin:0 0 8px;font-size:15px;">Web portal</h2>
-      <p style="margin:0 0 4px;"><a href="${esc(appUrl)}" style="color:#15803d;font-weight:bold;">${esc(appUrl)}</a></p>
-      <p style="margin:0 0 16px;font-size:13px;color:#475569;">${esc(IPHONE_NOTE)}</p>`;
+const textInstall = (appUrl: string) => [
+  "Open the app",
+  `  ${appUrl}`,
+  "Add it to your phone's home screen:",
+  `  ${ANDROID_STEPS}`,
+  `  ${IPHONE_STEPS}`,
+  INSTALLED_NOTE,
+  "On a computer, just open the same link in your browser.",
+];
+
+const htmlInstall = (appUrl: string) => `<h2 style="margin:0 0 8px;font-size:15px;">Open the app</h2>
+      <p style="margin:0 0 12px;">
+        <a href="${esc(appUrl)}" style="display:inline-block;background:#15803d;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:bold;">Open TBA Drop Letter</a>
+      </p>
+      <p style="margin:0 0 12px;font-size:13px;color:#475569;word-break:break-all;"><a href="${esc(appUrl)}" style="color:#15803d;">${esc(appUrl)}</a></p>
+      <p style="margin:0 0 6px;"><strong>Add it to your phone&rsquo;s home screen</strong></p>
+      <ul style="margin:0 0 8px;padding-left:20px;">
+        <li style="margin:0 0 4px;">${esc(ANDROID_STEPS)}</li>
+        <li style="margin:0 0 4px;">${esc(IPHONE_STEPS)}</li>
+      </ul>
+      <p style="margin:0 0 16px;font-size:13px;color:#475569;">${esc(INSTALLED_NOTE)} On a computer, just open the same link in your browser.</p>`;
 
 /**
  * Builds the welcome email (subject + plain text + simple HTML). Pure: the output depends only on the input, so it
  * is easy to test and renders identically wherever it is used. The HTML escapes every interpolated value.
  */
-export function buildWelcomeEmail({ name, advisorId, email, password, apkUrl, appUrl }: WelcomeEmailFields): WelcomeEmailContent {
-  const subject = "Welcome to TBA Drop Letter — your login and app download";
+export function buildWelcomeEmail({ name, advisorId, email, password, appUrl }: WelcomeEmailFields): WelcomeEmailContent {
+  const subject = "Welcome to TBA Drop Letter — your login and how to install the app";
 
   const text = [
     `Hi ${name},`,
@@ -79,16 +95,9 @@ export function buildWelcomeEmail({ name, advisorId, email, password, apkUrl, ap
     `  Password: ${password}`,
     `  Advisor ID: ${advisorId}`,
     "",
-    "Download the Android app",
-    "Open this link on your phone to install the app:",
-    `  ${apkUrl}`,
-    INSTALL_NOTE,
+    ...textInstall(appUrl),
     "",
-    "After installing, open the app and sign in with the email and password above.",
-    "",
-    "Web portal",
-    `  ${appUrl}`,
-    IPHONE_NOTE,
+    "Sign in with the email and password above.",
     'You can change your password later using "Forgot password?" on the sign-in screen.',
     "",
     "— TBA Drop Letter",
@@ -108,15 +117,8 @@ export function buildWelcomeEmail({ name, advisorId, email, password, apkUrl, ap
         <tr><td style="padding:4px 12px 4px 0;color:#475569;">Password</td><td style="padding:4px 0;"><strong>${esc(password)}</strong></td></tr>
         <tr><td style="padding:4px 12px 4px 0;color:#475569;">Advisor ID</td><td style="padding:4px 0;"><strong>${esc(advisorId)}</strong></td></tr>
       </table>
-      <h2 style="margin:0 0 8px;font-size:15px;">Download the Android app</h2>
-      <p style="margin:0 0 12px;">Open this link <strong>on your phone</strong> to install the app:</p>
-      <p style="margin:0 0 20px;">
-        <a href="${esc(apkUrl)}" style="display:inline-block;background:#15803d;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:bold;">Download the app</a>
-      </p>
-      <p style="margin:0 0 8px;font-size:13px;color:#475569;word-break:break-all;">${esc(apkUrl)}</p>
-      <p style="margin:0 0 16px;font-size:13px;color:#475569;">${esc(INSTALL_NOTE)}</p>
-      <p style="margin:0 0 16px;">After installing, open the app and sign in with the email and password above.</p>
-      ${portalHtml(appUrl)}
+      ${htmlInstall(appUrl)}
+      <p style="margin:0 0 16px;">Sign in with the email and password above.</p>
       <p style="margin:0;font-size:13px;color:#475569;">You can change your password later using &ldquo;Forgot password?&rdquo; on the sign-in screen.</p>
     </div>
     <div style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">TBA Drop Letter</div>
@@ -130,9 +132,9 @@ export function buildWelcomeEmail({ name, advisorId, email, password, apkUrl, ap
 /**
  * Builds the welcome email for a regional account (State/City President or TBA India Ops). Pure, like
  * {@link buildWelcomeEmail}: name, role title, sign-in username, the temporary password, the web portal link (and
- * that Google sign-in with the same Gmail also works), and the Android app download link with an install note.
+ * that Google sign-in with the same Gmail also works), and the add-to-home-screen steps.
  */
-export function buildRegionalWelcomeEmail({ name, title, email, password, apkUrl, appUrl }: RegionalWelcomeEmailFields): WelcomeEmailContent {
+export function buildRegionalWelcomeEmail({ name, title, email, password, appUrl }: RegionalWelcomeEmailFields): WelcomeEmailContent {
   const subject = `Welcome to TBA Drop Letter — your ${title} login`;
   const google = "You can also use \"Sign in with Google\" with this same Gmail address.";
 
@@ -145,15 +147,9 @@ export function buildRegionalWelcomeEmail({ name, title, email, password, apkUrl
     `  Username (email): ${email}`,
     `  Temporary password: ${password}`,
     "",
-    "Web portal",
-    `  ${appUrl}`,
-    google,
-    IPHONE_NOTE,
+    ...textInstall(appUrl),
     "",
-    "Download the Android app",
-    "Open this link on your Android phone to install the app:",
-    `  ${apkUrl}`,
-    INSTALL_NOTE,
+    google,
     "",
     'Please change your password after signing in, using "Forgot password?" on the sign-in screen.',
     "",
@@ -173,15 +169,8 @@ export function buildRegionalWelcomeEmail({ name, title, email, password, apkUrl
         <tr><td style="padding:4px 12px 4px 0;color:#475569;">Username (email)</td><td style="padding:4px 0;"><strong>${esc(email)}</strong></td></tr>
         <tr><td style="padding:4px 12px 4px 0;color:#475569;">Temporary password</td><td style="padding:4px 0;"><strong>${esc(password)}</strong></td></tr>
       </table>
-      ${portalHtml(appUrl)}
-      <p style="margin:0 0 20px;">${esc(google)}</p>
-      <h2 style="margin:0 0 8px;font-size:15px;">Download the Android app</h2>
-      <p style="margin:0 0 12px;">Open this link <strong>on your Android phone</strong> to install the app:</p>
-      <p style="margin:0 0 20px;">
-        <a href="${esc(apkUrl)}" style="display:inline-block;background:#15803d;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:bold;">Download the app</a>
-      </p>
-      <p style="margin:0 0 8px;font-size:13px;color:#475569;word-break:break-all;">${esc(apkUrl)}</p>
-      <p style="margin:0 0 16px;font-size:13px;color:#475569;">${esc(INSTALL_NOTE)}</p>
+      ${htmlInstall(appUrl)}
+      <p style="margin:0 0 16px;">${esc(google)}</p>
       <p style="margin:0;font-size:13px;color:#475569;">Please change your password after signing in, using &ldquo;Forgot password?&rdquo; on the sign-in screen.</p>
     </div>
     <div style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">TBA Drop Letter</div>

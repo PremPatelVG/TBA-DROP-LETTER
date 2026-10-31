@@ -1,15 +1,15 @@
 # TBA Drop Letter
 
-App for tracking letter drops. Field advisors log each drop in an Android app (or the same pages in a phone
-browser); the operations team (desktop web) manages advisors, searches all drops, exports them and sees the analytics.
+App for tracking letter drops. Field advisors log each drop on their phone, in the web app added to the home
+screen (it opens full screen with the TBA icon, like an app); the operations team (desktop web) manages advisors, searches all drops, exports them and sees the analytics.
 
 Stack: Next.js 15 (App Router, TypeScript), Tailwind CSS 4, Firebase (Google and email/password sign-in,
-Firestore, a scheduled Cloud Function), hosted on Firebase App Hosting by default. The Android app is a Trusted
-Web Activity made with Bubblewrap: it opens the live advisor pages full screen in Chrome.
+Firestore, a scheduled Cloud Function), hosted on Firebase App Hosting by default. There is no Play Store, App Store or
+APK: the site is an installable web app (PWA) that people add to their home screen on Android and iPhone.
 
 - [Quick start (demo mode)](#quick-start-demo-mode-no-backend)
 - [Go live: step by step](#go-live-step-by-step) (for a non-developer)
-- [Android app for advisors](#android-app-for-advisors) (building, signing and sharing the APK)
+- [The app on phones](#the-app-on-phones-home-screen-web-app) (home-screen web app, no app stores)
 - [How it works on Firebase](#how-it-works-on-firebase) (for developers)
 - [Local development with the emulators](#local-development-with-the-emulators) and [tests](#tests)
 - [Demo site on Netlify](#demo-site-on-netlify) (the clickable demo with sample data, for review)
@@ -49,8 +49,8 @@ their email and an initial password. Anyone else who signs in sees "You don't ha
 deactivated person sees "Your access has been turned off".
 
 ## Screens
-Advisor (mobile screens with bottom navigation; the Android app opens them full screen, and they also work in a
-phone browser or installed from it via `public/advisor.webmanifest`):
+Advisor (mobile screens with bottom navigation; they work in a phone browser and open full screen once the app is
+added to the home screen, see [The app on phones](#the-app-on-phones-home-screen-web-app)):
 - `/advisor` dashboard: letters dropped, buildings covered, responses, response rate, this week's belt and how many
   more entries reach the next belt, the belt leaderboard, and my drops (responded drops are green).
 - `/advisor/drops/new` add a drop, one entry per letter: office number*, company name*, building name*, block no.*,
@@ -147,7 +147,7 @@ Pick your project with the arrow keys and Enter, and when asked for an alias typ
 
 ### 6b. Set up the welcome email (SMTP) — before you deploy
 The non-secret SMTP settings (host, port, user, from) are already filled in `apphosting.yaml` for the
-`indiaops@tbaindia.in` Google Workspace mailbox. You just create the password secret and set the two links:
+`indiaops@tbaindia.in` Google Workspace mailbox. You just create the password secret and set the app link:
 1. Create a **Google App Password** on `indiaops@tbaindia.in`: turn on 2-Step Verification, then
    **Google Account → Security → App passwords → Mail**, and copy the 16-character code.
 2. Store it in Cloud Secret Manager for this project (paste the code when prompted; answer **Yes** to grant the
@@ -155,12 +155,9 @@ The non-secret SMTP settings (host, port, user, from) are already filled in `app
    ```
    npx firebase apphosting:secrets:set SMTP_PASS
    ```
-3. `APP_APK_URL` in `apphosting.yaml` points at `https://app.tbaindia.in/tba-advisor.apk` by default. The app is
-   **not** on Google Play or the App Store: it is distributed only by this emailed download link, so **the built APK
-   must be hosted at `APP_APK_URL`** (go-live step 11 / A4). Edit the value to your real hosted URL and redeploy;
-   until a real file is there the download link in the email will 404. (The older name `ADVISOR_APK_URL` still works.)
-4. `APP_URL` in `apphosting.yaml` is the web portal address the email links to (iPhone users and computers use the
-   website). It is a placeholder (`https://app.tbaindia.in`): set it to the app's real address and redeploy.
+3. `APP_URL` in `apphosting.yaml` is the app's web address that the email links to (people open it on their phone
+   and add it to the home screen). It is a placeholder (`https://app.tbaindia.in`): set it to the app's real
+   address and redeploy.
 
 If you skip this step, advisors and regional accounts are still created and the email is simply skipped with a short note. See
 [Email (SMTP) setup](#email-smtp-setup) for details and other mail providers. The deploy in step 7 **fails** if the
@@ -204,9 +201,9 @@ file: Firebase console > gear icon > **Project settings** > **Service accounts**
 save the file in the project folder as `service-account.json`, run the command again, then **delete the file**
 (it gives full access to your data; it is never uploaded or committed, but don't keep it lying around).
 
-### 9. Make sign-in work on phones and in the Android app
+### 9. Make sign-in work on phones and in the home-screen app
 On computers and in phone browsers, sign-in opens a Google pop-up and works as soon as the app is deployed. The
-Android app, the app added to the home screen (especially on iPhone), and phones that block the pop-up sign in by
+app added to the home screen (Android and iPhone), and phones that block the pop-up sign in by
 going to Google's page and coming back instead, which only works when sign-in runs on the app's own address. Set
 that up once:
 1. **Your app's address** without `https://`, for example `tba-drop-letter--your-project-id.<region>.hosted.app`
@@ -246,20 +243,20 @@ To remove someone, click **Deactivate** next to them: they lose access at once a
 (**Reactivate** undoes it).
 
 ### 11. Put the app on the phones
-- **Android**: build the app once and host the `.apk` at `APP_APK_URL`; every welcome email links to it (see
-  [Android app for advisors](#android-app-for-advisors) just below). Google Play is **not** used — no store listing,
-  privacy policy form, Data safety form or Play app signing is needed.
-- **iPhone** (there is no iPhone app, and the App Store is not used): open the portal address (`APP_URL`) in Safari,
-  sign in, then the Share button > **Add to Home Screen**. The welcome email says this.
+Nothing to build or upload: every welcome email links to the app (`APP_URL`) with these steps, and the app itself
+shows them (see [The app on phones](#the-app-on-phones-home-screen-web-app)).
+- **Android**: open the link in Chrome, sign in, tap **Install app** on the green card (or Chrome menu ⋮ >
+  **Add to Home screen** / **Install app**).
+- **iPhone**: open the link in Safari, tap **Share**, then **Add to Home Screen**.
 
 ### Email (SMTP) setup
-When you add an advisor or a regional account (step 10), the app can email them their login, the web portal link
-and a link to download the Android app, sent **from `indiaops@tbaindia.in`**. This is optional: if it is not set
+When you add an advisor or a regional account (step 10), the app can email them their login, the app link
+and how to add it to their home screen, sent **from `indiaops@tbaindia.in`**. This is optional: if it is not set
 up, accounts are still created and you simply share their login and the links yourself (you will see a short note when the email is skipped).
 
 On Firebase App Hosting the non-secret settings are **already filled in** in `apphosting.yaml` for the
 `indiaops@tbaindia.in` Google Workspace mailbox, so you normally only need to (a) create the `SMTP_PASS` secret and
-(b) set `APP_APK_URL` to your hosted APK and `APP_URL` to the portal address (go-live step 6b). On other hosts, set all
+(b) set `APP_URL` to the app's address (go-live step 6b). On other hosts, set all
 of these as environment variables. The password is **never** stored in `apphosting.yaml` or committed to the repo
 (see `.env.example`) — it lives only in Cloud Secret Manager:
 - `SMTP_HOST` — your mail provider's SMTP server for `indiaops@tbaindia.in` (Google Workspace: `smtp.gmail.com`;
@@ -268,10 +265,7 @@ of these as environment variables. The password is **never** stored in `apphosti
 - `SMTP_SECURE` — `true` only for port 465; otherwise leave it off.
 - `SMTP_USER` / `SMTP_PASS` — the mailbox login (usually `indiaops@tbaindia.in`) and its password or app-password.
 - `MAIL_FROM` — the From address (defaults to `indiaops@tbaindia.in`).
-- `APP_APK_URL` — where you host the built app (see [Android app for advisors](#android-app-for-advisors));
-  the email links here so the person installs it on their Android phone, for example
-  `https://app.tbaindia.in/tba-advisor.apk`. The older name `ADVISOR_APK_URL` is still read as a fallback.
-- `APP_URL` — the web portal address the email links to, for example `https://app.tbaindia.in`
+- `APP_URL` — the app's address the email links to, for example `https://app.tbaindia.in`
   (`NEXT_PUBLIC_APP_URL` is read as a fallback).
 
 **Recommended config — Google Workspace mailbox (`indiaops@tbaindia.in`):**
@@ -283,7 +277,6 @@ SMTP_SECURE=false
 SMTP_USER=indiaops@tbaindia.in
 SMTP_PASS=<Google App Password>
 MAIL_FROM=indiaops@tbaindia.in
-APP_APK_URL=https://app.tbaindia.in/tba-advisor.apk
 APP_URL=https://app.tbaindia.in
 ```
 
@@ -305,10 +298,9 @@ normal environment variable instead.) To rotate the password later, run the same
 > create the secret **before** the first `firebase deploy`.
 
 The welcome email fires when an **advisor** or a **regional account** (State/City President, TBA India Ops) is
-created. It contains their **username** (their email), the **initial password** you set, the **web portal link**
-(`APP_URL`, which iPhone users use instead of an app; Sign in with Google with the same Gmail also works), and the
-**Android download link** (`APP_APK_URL`, with a line on allowing installs from this source — a link, not a raw
-`.apk` attachment, which mail providers block). Advisors also get their **Advisor ID**; regional accounts get their
+created. It contains their **username** (their email), the **initial password** you set, the **app link**
+(`APP_URL`; Sign in with Google with the same Gmail also works), and two short steps to add the app to the home
+screen (Android: Chrome, Install app; iPhone: Safari, Share, Add to Home Screen). Advisors also get their **Advisor ID**; regional accounts get their
 title (e.g. "Gujarat President"). Nothing about the password is written to Firestore or the logs. If sending fails,
 or SMTP is not configured, the account is still created and the admin sees a short, non-blocking note.
 
@@ -319,8 +311,8 @@ exactly what is received in the demo: add an advisor or a regional account and t
 
 ### Later: publishing a new version
 Run `npx firebase deploy` again in the project folder (`npx firebase deploy --only apphosting` if only the app
-changed). The data is not touched. The Android app shows the new version by itself (it opens the live site), so it
-does not need to be rebuilt or reinstalled.
+changed). The data is not touched. The home-screen app shows the new version by itself (it opens the live site),
+so nobody needs to reinstall anything.
 
 ### Troubleshooting
 - **The master sees "You don't have access"**: the email in step 8 must be exactly the Google account used to
@@ -335,109 +327,31 @@ does not need to be rebuilt or reinstalled.
 
 ---
 
-## Android app for advisors
+## The app on phones (home-screen web app)
 
-Advisors get an Android app; operations and master keep using the website on a computer. The app opens the
-advisor pages of the live site (`/advisor`) full screen in Chrome (a "Trusted Web Activity"). So Google sign-in
-works as on the website, every change you deploy reaches the phones at once without reinstalling, and the app
-opens even without signal (it keeps a copy of its pages; entries made offline sync later). Phones need Android 5
-or newer with Chrome, which almost every Android phone has.
-
-You build the app on your own computer (Windows, Mac or Linux), after go-live steps 1-9: the site must be live
-(step 7), and sign-in must work on its own address (step 9), because the app signs in the same way. Allow about
-3 GB of disk space and 30-60 minutes for the first build; later builds take a few minutes.
-
-### A1. Build the app
-Open a terminal in the project folder (as in the go-live guide; on Windows, Command Prompt or PowerShell) and run
-this with your app's address from step 7, without `https://`:
-```
-npm run build:apk -- --host tba-drop-letter--your-project-id.<region>.hosted.app
-```
-- The first time, it explains that Java 17 and Google's Android SDK are needed (downloaded once, several hundred
-  MB) and asks whether you accept the Android SDK terms (https://developer.android.com/studio/terms). Type `y`
-  and press Enter.
-- It then creates the app's **signing key** and asks you to choose its password, twice (nothing shows while you
-  type): 10 or more letters, digits, dots, dashes or underscores, for example three words joined with dashes.
-  Read A2 before you continue.
-- At the end it prints where the app is and the key's **SHA-256 fingerprint** (a line like `AB:CD:12:...`):
-  - `android/output/tba-drop-letter.apk`: the app to send to phones;
-  - `android/output/tba-drop-letter.aab`: the same app for Google Play (not needed — the app is not published there).
-
-### A2. Keep the signing key safe
-The key is the file `tba-drop-letter.keystore` in the folder `tba-drop-letter-signing` in your user folder (on
-Windows `C:\Users\<you>\tba-drop-letter-signing`), together with its password. Android installs an update only if
-it is signed with the same key, so **every future build needs both**.
-- **Back it up now**: copy the `tba-drop-letter-signing` folder to a USB stick or a company drive, and keep the
-  password in a password manager (or on paper in a safe place), not next to the file.
-- **If you lose either one**, the app can no longer be updated: everyone has to uninstall it and install a new
-  app.
-- **Keep it private**: whoever has the key and its password can make an app that phones accept as an update of
-  yours. Never email it, put it in the project folder or upload it anywhere.
-- To build on another computer, copy the folder to the same place there, or add
-  `--keystore <path to the .keystore file>` to the command.
-
-### A3. Connect the app to the site
-Until the site lists the key's fingerprint, the app works but shows a browser address bar at the top. Once:
-1. Open `apphosting.yaml` in the project folder. At the end, delete the `# ` at the start of the three
-   `ANDROID_CERT_SHA256` lines and replace `AB:CD:EF:...:12` with the fingerprint from A1 (keep the quotes). Save.
-2. Deploy: `npx firebase deploy --only apphosting`.
-3. Open `https://<your app's address>/.well-known/assetlinks.json` in a browser: it shows your fingerprint.
-
-Then close the app on the phone and open it again; if the bar is still there after a few hours, reinstall the app.
-
-### A4. Give the app to people (direct distribution by emailed link)
-The app is **not** published on Google Play or the App Store. It is distributed directly: **host
-`android/output/tba-drop-letter.apk` at a public HTTPS address and set `APP_APK_URL` to it** (for example upload it
-to `public/tba-advisor.apk` of the site, or to any file host that serves it as a download, then redeploy). Every
-welcome email (advisors and regional accounts) contains that download link — not the file itself, because Gmail
-and most providers block `.apk` attachments, even zipped. On the phone, open the link and tap **Install**. The first time, Android asks to allow installing apps from that source
-(**Settings** > **Allow from this source**). If Play Protect warns about an unknown app, tap **More details** >
-**Install anyway**. Then open **TBA Drop Letter** and sign in. iPhone users have no app: they use the website.
-
-**Google Play: not needed.** Because the app is distributed by link, there is no Play Console account, store
-listing, privacy policy form, Data safety form or Play app signing to set up, and `ANDROID_CERT_SHA256` lists only
-your own key's fingerprint.
-
-### Updating the Android app
-Changes to the website reach the app by themselves. Build again only to change the app's name, icon, colours or
-address: run the same command, with the same key and password (the version number goes up by itself). Replace the
-hosted file at `APP_APK_URL`; people install the new `.apk` over the old one from the same link, keeping their data.
-
-### Good to know
-- **Package name**: the app's ID on Android is `com.tba.dropletter`, a placeholder. **Do not change it once people
-  have installed the app** (another ID is another app, and updates would not install over it). To use a different one, change it
-  before the first release in both `android/twa-manifest.json` (`packageId`) and `apphosting.yaml`
-  (`ANDROID_PACKAGE_NAME`). The app's name, colours and icons are also in `android/twa-manifest.json`.
-- **New address** (for example your own domain): build again with the new `--host`, and repeat go-live step 9.
-- **When nobody can answer questions in the terminal** (for example, Claude Code builds it for you through Remote
-  Control): the first run needs `--accept-android-sdk-terms` added to the command, which accepts the Android SDK
-  terms, so add it only once you have read and accepted them. The key's password then comes from the variable
-  `TBA_SIGNING_PASSWORD`. Set it yourself in the terminal before you start Claude Code there, so the password never
-  passes through a chat: Command Prompt `set TBA_SIGNING_PASSWORD=your-password`, PowerShell
-  `$env:TBA_SIGNING_PASSWORD="your-password"`, Mac/Linux `export TBA_SIGNING_PASSWORD=your-password`.
-- **Windows user name with a space** (`C:\Users\Jane Doe`): the build tools go to `C:\bubblewrap` instead, because
-  they do not work from a folder with a space in its name.
-- All options: `npm run build:apk -- --help`. The script is `scripts/build-apk.mjs`; it regenerates the Android
-  project in `android/build/` on every run (not committed) with Bubblewrap (`@bubblewrap/cli`), whose settings
-  file is `~/.bubblewrap/config.json`.
-
-### Troubleshooting the Android app
-- **A browser bar shows at the top**: `/.well-known/assetlinks.json` does not list the key the app was signed with
-  (A3). Fix it, deploy, and reopen the app.
-- **Sign-in returns to the sign-in screen**: finish go-live step 9.
-- **"App not installed" when updating**: the phone has a copy signed with another key. Uninstall it first.
-- **The build stops while downloading**: check the internet connection and run the same command again; what
-  was already downloaded is kept.
-
----
+There is no Play Store, App Store or APK. The website is an installable web app (a PWA): once added to the home
+screen it shows the TBA icon, opens full screen without the browser bar, and always loads the latest version.
+- `public/manifest.webmanifest` (linked from `src/app/layout.tsx` for every page): name "TBA Drop Letter", short
+  name "Drop Letter", start URL `/` (which sends each person to their own home screen after sign-in), `display:
+  standalone`, green theme `#15803d`, icons `public/icons/icon-192.png`, `icon-512.png` and `icon-maskable-512.png`.
+- iPhone: `public/icons/apple-touch-icon.png` (180 px) and the Apple web-app tags (`appleWebApp` in the root layout).
+- `src/components/install-app.tsx`: a green card on the sign-in screen and at the top of every screen. On Android
+  Chrome (and desktop Chrome/Edge) it keeps Chrome's `beforeinstallprompt` event and shows an **Install app**
+  button; on iPhone/iPad it shows "tap Share, then Add to Home Screen". It is hidden when the app already runs from
+  the home screen, and for 14 days after "Not now" / "Got it".
+- Chrome no longer requires a service worker to install a site. The advisor offline copy (`public/advisor-sw.js`,
+  see [Offline](#offline)) still works inside the installed app.
+- Google sign-in in the home-screen app uses the page-based (redirect) sign-in, so go-live step 9 must be done.
+- To check: open the live site on an Android phone in Chrome; the card offers **Install app**. On a computer, Chrome
+  DevTools > Application > Manifest shows the name, icons and any installability problem.
 
 ## How it works on Firebase
 
 ### Sign-in and the access list
 - Two sign-in methods for every role (`src/lib/data/firebase.ts`), both using Firebase Authentication and keyed by
   email: **email + password** (`signInWithEmailAndPassword`), and **Google** — a pop-up first, then the page-based
-  redirect when the pop-up is blocked or not supported, in the iPhone home-screen app, in the Android app (detected
-  by its `android-app://` referrer, remembered for the session), or from the "Sign in on this page" link.
+  redirect when the pop-up is blocked or not supported, in the home-screen app (iPhone, or Android when it runs
+  standalone), or from the "Sign in on this page" link.
   Passwords are stored and checked by Firebase Authentication; nothing about them is ever written to Firestore.
 - After sign-in the browser calls the server action `claimAccess` (`src/app/actions.ts`, Admin SDK). It verifies
   the ID token (a Google or password provider, verified email) and looks the email up in `users`. Not listed: the
@@ -553,16 +467,8 @@ logs "Failed to fetch RSC payload", which is expected).
   (override with `FIREBASE_AUTH_HELPER_ORIGIN`). The domain must also be an authorized domain in Firebase
   Authentication, and `https://<domain>/__/auth/handler` an authorized redirect URI of the OAuth web client. This
   works on any host that runs the Next.js server; go-live step 9 has the clicks.
-- **Android app** (Trusted Web Activity, built with Bubblewrap): `android/twa-manifest.json` holds its settings
-  (package `com.tba.dropletter`, start URL `/advisor`, name, colours, icons from `public/icons/`); the host is a
-  placeholder that `scripts/build-apk.mjs` (`npm run build:apk -- --host <domain>`) fills in when it regenerates the
-  project in `android/build/` (git-ignored, like `android/output/` and `*.keystore`). The script downloads JDK 17 and
-  the Android SDK command-line tools with Bubblewrap's own installers, creates the signing key (PKCS12, outside the
-  project), and serves the icons to Bubblewrap from `public/` itself. Chrome shows the app without a browser bar
-  when `/.well-known/assetlinks.json` (`src/app/.well-known/assetlinks.json/route.ts`, built at request time from
-  `ANDROID_PACKAGE_NAME` and the comma-separated `ANDROID_CERT_SHA256`) lists the app's signing key.
-  `public/advisor.webmanifest` meets the TWA requirements (standalone, start URL, theme colours, 512px icons
-  including a maskable one).
+- **Home-screen app**: `public/manifest.webmanifest`, `public/icons/` and `src/components/install-app.tsx`; see
+  [The app on phones](#the-app-on-phones-home-screen-web-app).
 
 ### Code layout
 - `src/lib/data/`: data layer; `types.ts` (the `DataApi` interface), `mock.ts` (demo data in localStorage, same
@@ -570,11 +476,10 @@ logs "Failed to fetch RSC payload", which is expected).
 - `src/lib/firebase/`: browser (`client.ts`) and Admin SDK (`admin.ts`) setup; `src/app/actions.ts`: server actions.
 - `src/lib/search.ts` search words and tokens; `src/lib/stats.ts` totals and month grouping; `src/lib/validate.ts`.
 - `src/components/ui.tsx` shared UI, role guard, navigation, sync banner; `src/app/advisor/*`, `src/app/ops/*`,
-  `src/app/master`, `src/app/login`, `src/app/not-authorised`, `src/app/.well-known/assetlinks.json`.
+  `src/app/master`, `src/app/login`, `src/app/not-authorised`.
 - `public/advisor-sw.js` and `src/lib/advisor-offline.ts`: the advisor app's offline copy.
-- `android/twa-manifest.json`: the Android app's settings.
-- `firestore.rules`, `firestore.indexes.json`, `functions/` (weekly job), `scripts/` (create-master, emulator seed,
-  Android build), `tests/` (rules tests, end-to-end test).
+- `public/manifest.webmanifest`, `public/icons/`, `src/components/install-app.tsx`: the home-screen app.
+- `firestore.rules`, `firestore.indexes.json`, `functions/` (weekly job), `scripts/` (create-master, emulator seed), `tests/` (rules tests, end-to-end test).
 
 ## Local development with the emulators
 Needs Java 21 or newer for the Firestore emulator.
@@ -609,8 +514,8 @@ npm run lint && npm run build
   with the browser offline and the app server stopped, the advisor app starts from its offline copy and opens a drop
   and New drop; operations uses the dashboard (outside the service worker's scope), search, Excel export, adds and
   deactivates an advisor; master adds an operations user who then signs in; the deactivated
-  advisor is refused; the weekly belt snapshot runs twice with no change the second time; `assetlinks.json`, the manifest and
-  its icons are served as the Android app needs. Screenshots go to `tests/e2e/output/`.
+  advisor is refused; the weekly belt snapshot runs twice with no change the second time; the web app manifest, its icons and
+  the iPhone icon and tags are served for the home-screen app. Screenshots go to `tests/e2e/output/`.
 - The real Google sign-in page needs internet access. The test hands the emulator a Google account directly
   (`window.__E2E_GOOGLE_ACCOUNT`, honoured only in emulator builds); `E2E_POPUP=1` uses the emulator's pop-up.
 

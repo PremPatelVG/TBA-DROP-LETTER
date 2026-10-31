@@ -64,8 +64,6 @@ database-debug.log
 service-account*.json
 *-firebase-adminsdk-*.json
 
-# Android app (npm run build:apk): generated project, built files, and signing keys (never commit a key)
-/android/build/
-/android/output/
+# signing keys (never commit a key)
 *.keystore
 *.jks

@@ -7,6 +7,7 @@ import { ymd } from "@/lib/stats";
 import { scopeLabel } from "@/lib/labels";
 import { registerAdvisorServiceWorker } from "@/lib/advisor-offline";
 import { BrandLogo } from "@/components/brand-logo";
+import { InstallAppBanner } from "@/components/install-app";
 import { canManageRegionalAccounts } from "@/lib/data/authz";
 
 export const inputCls = "mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-200";
@@ -194,7 +195,7 @@ function AdminShell({ user, children }: { user: Profile; children: React.ReactNo
           </div>
         </nav>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-6"><InstallAppBanner className="mb-4" />{children}</main>
     </div>
   );
 }
@@ -237,7 +238,7 @@ function AdvisorShell({ user, children }: { user: Profile; children: React.React
         </div>
         <SyncBanner />
       </header>
-      <main className="mx-auto max-w-lg px-4 pt-4 pb-28">{children}</main>
+      <main className="mx-auto max-w-lg px-4 pt-4 pb-28"><InstallAppBanner className="mb-4" />{children}</main>
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t bg-white" style={{ paddingBottom: "env(safe-area-inset-bottom)" }} aria-label="Advisor">
         <div className="mx-auto grid max-w-lg grid-cols-4">
           {ADVISOR_TABS.map((t) => {

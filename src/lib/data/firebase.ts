@@ -109,7 +109,6 @@ let redirectFailure: string | null = null;
 /** Waits for the saved sign-in to load, and picks up the result of a redirect sign-in once. */
 function ready() {
   return (authReady ??= (async () => {
-    inAndroidApp(); // note it before any page change drops the referrer
     const auth = clientAuth();
     try {
       const r = await getRedirectResult(auth);
@@ -204,26 +203,14 @@ function emulatorTestAccount(): { email: string; name: string } | null {
 }
 
 /**
- * Where a pop-up's result cannot come back, sign in with a redirect instead: the installed iPhone/iPad app, the
- * Android app (a Trusted Web Activity, which Chrome opens with an android-app:// referrer) and the installed web
- * app on Android. Redirect sign-in needs authDomain set to the app's own domain (README, go-live step 9).
+ * Where a pop-up's result cannot come back, sign in with a redirect instead: the iPhone/iPad and Android
+ * home-screen app (the installed web app, opened full screen). Redirect sign-in needs authDomain set to the app's own domain (README, go-live step 9).
  */
 function popupUnsupported() {
   if (typeof window === "undefined") return false;
   if ((navigator as { standalone?: boolean }).standalone === true) return true;
-  if (inAndroidApp()) return true;
   const installed = ["standalone", "fullscreen"].some((m) => window.matchMedia?.(`(display-mode: ${m})`).matches);
   return installed && /Android/i.test(navigator.userAgent);
-}
-
-/** True in the Android app. The referrer is only there on the first page load, so it is kept for the session. */
-function inAndroidApp() {
-  try {
-    if (document.referrer.startsWith("android-app://")) sessionStorage.setItem("tba.androidApp", "1");
-    return sessionStorage.getItem("tba.androidApp") === "1";
-  } catch {
-    return false; // storage blocked
-  }
 }
 
 // ---------- writes that also work offline ----------

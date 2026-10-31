@@ -29,8 +29,6 @@ const appEnv = {
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "127.0.0.1",
   NEXT_DIST_DIR: ".next-e2e",
   NEXT_TELEMETRY_DISABLED: "1",
-  // Android app (assetlinks.json): two made-up signing key fingerprints, written two different ways.
-  ANDROID_CERT_SHA256: `SHA256: ${"ab".repeat(32)}, ${Array(32).fill("12").join(":")}`,
 };
 
 const results = [];
@@ -340,19 +338,11 @@ try {
     assert.deepEqual(await snapshot(), first);
   });
 
-  await step("Android app: asset links, web app manifest and icons", async () => {
-    const links = await (await fetch(`${BASE}/.well-known/assetlinks.json`)).json();
-    assert.deepEqual(links, [{
-      relation: ["delegate_permission/common.handle_all_urls"],
-      target: {
-        namespace: "android_app",
-        package_name: "com.tba.dropletter",
-        sha256_cert_fingerprints: [Array(32).fill("AB").join(":"), Array(32).fill("12").join(":")],
-      },
-    }]);
-    const manifest = await (await fetch(`${BASE}/advisor.webmanifest`)).json();
-    assert.equal(manifest.start_url, "/advisor");
+  await step("Home-screen app: web app manifest, icons and Apple tags", async () => {
+    const manifest = await (await fetch(`${BASE}/manifest.webmanifest`)).json();
+    assert.equal(manifest.start_url, "/");
     assert.equal(manifest.display, "standalone");
+    assert.equal(manifest.theme_color, "#15803d");
     assert.ok(manifest.theme_color && manifest.background_color);
     for (const purpose of ["any", "maskable"]) {
       const icon = manifest.icons.find((i) => i.sizes === "512x512" && i.purpose === purpose);
@@ -360,6 +350,11 @@ try {
       const r = await fetch(`${BASE}${icon.src}`);
       assert.equal(r.headers.get("content-type"), "image/png");
     }
+    const html = await (await fetch(`${BASE}/login`)).text();
+    assert.match(html, /<link rel="manifest" href="\/manifest.webmanifest"/);
+    assert.match(html, /rel="apple-touch-icon" href="\/icons\/apple-touch-icon.png"/);
+    assert.equal((await fetch(`${BASE}/icons/apple-touch-icon.png`)).status, 200);
+    assert.equal((await fetch(`${BASE}/.well-known/assetlinks.json`)).status, 404, "no Android app (TWA) any more");
   });
 } catch {
   exitCode = 1;

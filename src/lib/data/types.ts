@@ -230,7 +230,7 @@ export interface DataApi {
 
   listAdvisors(): Promise<Profile[]>;
   /**
-   * Add an advisor to the access list and send them a welcome email with their login and the app download link.
+   * Add an advisor to the access list and send them a welcome email with their login, the app link and the add-to-home-screen steps.
    * The email never blocks creation: the returned {@link AdvisorCreated.welcomeEmail} says what happened with it
    * (and, in the demo, carries a preview to show).
    */

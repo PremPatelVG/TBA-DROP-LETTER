@@ -5,6 +5,7 @@ import { api, USE_MOCK, type AccessResult, type DemoAccount } from "@/lib/data";
 import { accessRedirect, btnCls, errMsg, homeFor, inputCls, Notice, useData } from "@/components/ui";
 import { GoogleMark } from "@/components/google-mark";
 import { BrandLogo } from "@/components/brand-logo";
+import { InstallAppBanner } from "@/components/install-app";
 
 type Phase = "checking" | "idle" | "pending" | "redirecting";
 const GOOGLE_LABEL: Record<Phase, string> = { checking: "Checking sign-in...", idle: "Sign in with Google", pending: "Please wait...", redirecting: "Opening Google..." };
@@ -77,6 +78,7 @@ export default function LoginPage() {
             <BrandLogo size="lg" tone="inverse" align="center" />
           </div>
         </div>
+        <InstallAppBanner />
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-green-700">Drop Letter</p>
           <h1 className="mt-1 text-xl font-semibold">Sign in</h1>

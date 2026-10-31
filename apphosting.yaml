@@ -22,21 +22,9 @@ env:
   #   value: your-app-domain.example
   #   availability: [BUILD]
 
-  # Android app for advisors (README, "Android app for advisors"). Served at /.well-known/assetlinks.json so the app
-  # opens full screen, without the browser bar. Neither value is a secret.
-  # The app's package name: must match android/twa-manifest.json, and do not change it once people have installed the app.
-  - variable: ANDROID_PACKAGE_NAME
-    value: com.tba.dropletter
-    availability: [RUNTIME]
-  # The SHA-256 fingerprint of the app's signing key, which `npm run build:apk` prints at the end. (The app is
-  # distributed by link, not Google Play, so no Play app signing fingerprint is needed.) Remove the # signs, paste the fingerprint, and deploy again.
-  # - variable: ANDROID_CERT_SHA256
-  #   value: "AB:CD:EF:...:12"
-  #   availability: [RUNTIME]
-
   # Welcome emails for advisors and regional accounts (README, "Email (SMTP) setup"). When an advisor or a regional
-  # account is added they are emailed their login, the portal link and the app download link, from
-  # indiaops@tbaindia.in. The non-secret settings below are the recommended Google Workspace config; the password is a Secret Manager secret (see SMTP_PASS). If SMTP_PASS, APP_APK_URL or APP_URL is
+  # account is added they are emailed their login, the app link and how to add it to the home screen, from
+  # indiaops@tbaindia.in. The non-secret settings below are the recommended Google Workspace config; the password is a Secret Manager secret (see SMTP_PASS). If SMTP_PASS or APP_URL is
   # unset, accounts are still created and the email is skipped with a short note. Change these to match your mail
   # provider if you are not using the indiaops@tbaindia.in Google Workspace mailbox.
   - variable: SMTP_HOST
@@ -61,14 +49,8 @@ env:
   - variable: SMTP_PASS
     secret: SMTP_PASS
     availability: [RUNTIME]
-  # Where you host the built Android APK; every welcome email (advisors and regional accounts) links here. The app is
-  # NOT on Google Play or the App Store: it is distributed only by this emailed download link (README, "Android app").
-  # Replace this with your real hosted-APK URL — until it points at a real file the download link will 404, so host
-  # the APK first and then set this value and redeploy. (The older name ADVISOR_APK_URL is still accepted.)
-  - variable: APP_APK_URL
-    value: https://app.tbaindia.in/tba-advisor.apk
-    availability: [RUNTIME]
-  # The web portal address that welcome emails link to (iPhone users and computers use the website). PLACEHOLDER:
+  # The app's web address that welcome emails link to. There is no Play Store, App Store or APK: people open this
+  # link on their phone and add it to the home screen (Android: Install app; iPhone: Share, Add to Home Screen). PLACEHOLDER:
   # replace with the app's real address (your custom domain, or the *.hosted.app URL) and redeploy.
   - variable: APP_URL
     value: https://app.tbaindia.in

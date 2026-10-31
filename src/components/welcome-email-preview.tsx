@@ -3,7 +3,7 @@ import { btn2Cls } from "@/components/ui";
 import type { WelcomeEmailPreview } from "@/lib/data/types";
 
 /**
- * Shows a preview of the welcome email a new advisor receives — their login, password and the app download link.
+ * Shows a preview of the welcome email a new advisor receives — their login, password, the app link and the add-to-home-screen steps.
  * Rendered (and shown) only when `email` is set. This is the DEMO preview: no email is actually sent. The body is
  * shown in a sandboxed iframe so it looks exactly as the advisor would see it, with no styles leaking either way.
  */

@@ -52,12 +52,12 @@ export default function Advisors() {
         // Demo: nothing is actually sent — show the admin exactly what the advisor would receive.
         setEmailPreview(welcomeEmail.preview);
         setShowEmail(true);
-        setMsg({ kind: "ok", text: `${base} A welcome email with their login and the app download link was prepared — open the preview to see it.` });
+        setMsg({ kind: "ok", text: `${base} A welcome email with their login, the app link and add-to-home-screen steps was prepared — open the preview to see it.` });
       } else if (welcomeEmail.status === "sent") {
-        setMsg({ kind: "ok", text: `${base} A welcome email with their login and the app download link was sent to ${email}.` });
+        setMsg({ kind: "ok", text: `${base} A welcome email with their login, the app link and add-to-home-screen steps was sent to ${email}.` });
       } else {
         // skipped (not configured yet) or failed: the advisor is created regardless — a soft, non-fatal warning.
-        setMsg({ kind: "info", text: `${base} The welcome email could not be sent (${welcomeEmail.reason}) — share their login and the app download link with them directly.` });
+        setMsg({ kind: "info", text: `${base} The welcome email could not be sent (${welcomeEmail.reason}) — share their login and the app link with them directly.` });
       }
       reload();
     } catch (err) {
