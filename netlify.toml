@@ -1,12 +1,14 @@
-# Netlify builds only the clickable demo of the front end: demo mode with sample data kept in the browser, no
-# Firebase, no service worker, and no environment variables or secrets needed. The real app is deployed to Firebase
-# App Hosting (apphosting.yaml, firebase.json); nothing here affects it. Locally the same build is `npm run build:demo`.
+# The LIVE app on Netlify: the real Next.js app (pages + server actions) on Netlify's Next.js runtime, with Firebase
+# for sign-in and data. The settings (Firebase web app, server credentials, email) are environment variables set in
+# the Netlify UI, never in this file: see README, "Go live: step by step", step 7. The build checks them first and a
+# production deploy stops if the Firebase settings are missing (scripts/netlify-build.mjs).
+#
+# The clickable demo with sample data (tba-drop-letter-demo) does NOT use this file: build it with
+# `npm run build:demo` and deploy the preview/dist-demo folder (README, "Demo site on Netlify").
 [build]
-  command = "npm run build:demo"
-  publish = "preview/dist-demo"
+  command = "npm run build:netlify"
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "22"
-  # The repository is also a Next.js app. The demo is a single static page, so Netlify's automatic Next.js runtime
-  # (which expects the server build in .next) must not run.
-  NETLIFY_NEXT_PLUGIN_SKIP = "true"
+  NEXT_PUBLIC_USE_MOCK = "false"
