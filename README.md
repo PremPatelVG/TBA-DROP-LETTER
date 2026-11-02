@@ -146,8 +146,8 @@ A browser window opens: sign in with the same Google account as in step 1 and al
 npx firebase use --add
 ```
 Pick your project with the arrow keys and Enter, and when asked for an alias type `default` and press Enter.
-(This saves the project ID in the file `.firebaserc`; you can also edit that file and replace
-`your-firebase-project-id` with your project ID.) Then upload the security rules, the search indexes and the
+(This saves the project ID in the file `.firebaserc`, which is already set to `tba-drop-letter`; just check it
+matches.) Then upload the security rules, the search indexes and the
 weekly belt snapshot (a scheduled function in Mumbai, asia-south1):
 ```
 npm run deploy:firebase
@@ -162,10 +162,9 @@ runs on **Netlify**. Firebase keeps the sign-in and the data. This is a **new** 
 separate from the demo site `tba-drop-letter-demo`.
 
 **a. Get the values you will paste** (keep this tab open):
-- **Firebase web app**: Firebase console > gear icon > **Project settings** > **General** > **Your apps**. If there
-  is no web app yet, click the **</>** icon, name it `TBA Drop Letter`, leave "Firebase Hosting" unticked, and
-  **Register app**. Under **SDK setup and configuration** > **Config** you see `apiKey`, `authDomain`, `projectId`,
-  `appId` and `messagingSenderId`.
+- **Firebase web app**: already done. The project `tba-drop-letter` and its web app settings (`apiKey`,
+  `projectId`, `appId`, `messagingSenderId`) are in `netlify.toml` and `.firebaserc`; they are public identifiers,
+  not secrets. If you ever move to another Firebase project, change them there.
 - **Server key**: same **Project settings** > **Service accounts** > **Generate new private key** > **Generate
   key**. A `.json` file downloads. Open it in Notepad: you need `client_email` and `private_key` (the long value from
   `-----BEGIN PRIVATE KEY-----` to `-----END PRIVATE KEY-----\n`). This key gives full access to the data: paste it
@@ -186,11 +185,7 @@ variable** > **Add a single variable**, once per row. "Scope" is under **Scopes*
 
 | Key | Value | Scope | Secret |
 |---|---|---|---|
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | `apiKey` | Builds | no |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `authDomain` for now (`<project-id>.firebaseapp.com`); step 9 changes it | Builds | no |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `projectId` | Builds | no |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | `appId` | Builds | no |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` | Builds | no |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `tba-drop-letter.firebaseapp.com` for now; step 9 changes it to the app's address | Builds | no |
 | `FIREBASE_CLIENT_EMAIL` | `client_email` from the key file | Functions | no |
 | `FIREBASE_PRIVATE_KEY` | `private_key` from the key file, all of it | Functions | **yes** |
 | `SMTP_HOST` | `smtp.gmail.com` | Functions | no |
@@ -200,7 +195,7 @@ variable** > **Add a single variable**, once per row. "Scope" is under **Scopes*
 | `MAIL_FROM` | `indiaops@tbaindia.in` | Functions | no |
 | `APP_URL` | the app's address, for example `https://app.tbaindia.in` | Functions | no |
 
-Keep the Functions variables to these: Netlify gives functions at most 4 KB of variables in total, and the private
+The other Firebase settings are already in `netlify.toml`. Keep the Functions variables to these: Netlify gives functions at most 4 KB of variables in total, and the private
 key alone is about 1.7 KB. (The `NEXT_PUBLIC_*` values are public settings, not secrets: they are built into the
 page.)
 

@@ -12,3 +12,10 @@
 [build.environment]
   NODE_VERSION = "22"
   NEXT_PUBLIC_USE_MOCK = "false"
+  # The Firebase web app "tba-drop-letter" (Firebase console > Project settings > Your apps). These are public
+  # identifiers, built into the page, not secrets. NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN is NOT here: it is the app's
+  # own address, set in the Netlify UI (README, go-live step 9), so it can change without a code change.
+  NEXT_PUBLIC_FIREBASE_API_KEY = "AIzaSyAE1Ich4NDo3aoOZaqUHXm35hxSIepuTWI"
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID = "tba-drop-letter"
+  NEXT_PUBLIC_FIREBASE_APP_ID = "1:876583273676:web:444b70bbc5e2e09090ae69"
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID = "876583273676"

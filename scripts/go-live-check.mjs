@@ -49,7 +49,7 @@ if (process.argv.includes("--env")) {
   for (const w of warnings) todo.push(w);
   if (!errors.length) ok.push("Environment variables: Firebase settings and server credentials present");
 } else {
-  todo.push("Netlify environment variables (Firebase web app, FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY, SMTP_*, APP_URL): set in the Netlify UI, README go-live step 7. Every production build checks them and stops if the Firebase ones are missing.");
+  todo.push("Netlify environment variables (NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY, SMTP_*, APP_URL): set in the Netlify UI, README go-live step 7. Every production build checks them and stops if the Firebase ones are missing.");
 }
 
 // ---- Secrets in git ------------------------------------------------------------------------------
