@@ -4,7 +4,7 @@ App for tracking letter drops. Field advisors log each drop on their phone, in t
 screen (it opens full screen with the TBA icon, like an app); the operations team (desktop web) manages advisors, searches all drops, exports them and sees the analytics.
 
 Stack: Next.js 15 (App Router, TypeScript), Tailwind CSS 4, Firebase (Google and email/password sign-in,
-Firestore, a scheduled Cloud Function), hosted on Firebase App Hosting by default. There is no Play Store, App Store or
+Firestore, a scheduled Cloud Function), hosted on Netlify (Next.js runtime). There is no Play Store, App Store or
 APK: the site is an installable web app (PWA) that people add to their home screen on Android and iPhone.
 
 - [Quick start (demo mode)](#quick-start-demo-mode-no-backend)
@@ -17,9 +17,13 @@ APK: the site is an installable web app (PWA) that people add to their home scre
 ## Quick start (demo mode, no backend)
 ```
 npm install
-npm run dev      # http://localhost:3000
+npm run dev:demo   # http://localhost:3000, with sample data and demo accounts
 ```
-Demo mode is on by default (`NEXT_PUBLIC_USE_MOCK` unset or `true`). You can sign in with an email and the shared
+The app uses Firebase by default (`npm run dev` and every build need the Firebase settings). Demo mode is only for
+local development (`npm run dev:demo`, or `NEXT_PUBLIC_USE_MOCK=true` in `.env.local`), the clickable preview and
+the Netlify demo. **The live app never contains the demo data or demo accounts:** `next build` refuses
+`NEXT_PUBLIC_USE_MOCK=true`, the demo data layer is left out of the build, and `npm run go-live:check -- --build`
+scans the build to prove it. In demo mode you can sign in with an email and the shared
 demo password (shown on the sign-in screen, `demo1234`), or "Sign in with Google" opens a demo account chooser:
 **Master Admin** (sees everything, manages the regional accounts and edits the belt thresholds), **TBA India Ops**
 (national — sees everything and adds/manages state and city accounts, but no threshold editor), a **State/City president** (e.g. Gujarat or Rajkot), an
@@ -100,7 +104,7 @@ Commands are typed in a terminal window opened in the project folder:
 4. Google Analytics is not needed; you can turn it off. Click **Create project**.
 
 ### 2. Upgrade to the Blaze plan and set a budget alert
-The weekly belt snapshot (a scheduled Cloud Function) and App Hosting need the pay-as-you-go **Blaze** plan.
+The weekly belt snapshot (a scheduled Cloud Function) needs the pay-as-you-go **Blaze** plan.
 1. In the Firebase console, click **Upgrade** next to "Spark plan" (bottom left, or under the gear icon >
    **Usage and billing**), choose **Blaze**, and create or pick a Cloud Billing account with your card.
 2. Set a budget alert, so you get an email if costs go above what you expect. If the upgrade screen offers a
@@ -133,7 +137,7 @@ People can sign in either with Google or with an email and password; the email i
    ```
    It downloads what the app needs; it takes a few minutes and warnings are normal.
 
-### 6. Connect this folder to your Firebase project
+### 6. Connect this folder to Firebase and upload the rules and the weekly function
 ```
 npx firebase login
 ```
@@ -142,51 +146,78 @@ A browser window opens: sign in with the same Google account as in step 1 and al
 npx firebase use --add
 ```
 Pick your project with the arrow keys and Enter, and when asked for an alias type `default` and press Enter.
-(This saves the project ID in the file `.firebaserc`; you can also edit that file and replace
-`your-firebase-project-id` with your project ID.)
-
-### 6b. Set up the welcome email (SMTP) — before you deploy
-The non-secret SMTP settings (host, port, user, from) are already filled in `apphosting.yaml` for the
-`indiaops@tbaindia.in` Google Workspace mailbox. You just create the password secret and set the app link:
-1. Create a **Google App Password** on `indiaops@tbaindia.in`: turn on 2-Step Verification, then
-   **Google Account → Security → App passwords → Mail**, and copy the 16-character code.
-2. Store it in Cloud Secret Manager for this project (paste the code when prompted; answer **Yes** to grant the
-   backend access):
-   ```
-   npx firebase apphosting:secrets:set SMTP_PASS
-   ```
-3. `APP_URL` in `apphosting.yaml` is the app's web address that the email links to (people open it on their phone
-   and add it to the home screen). It is a placeholder (`https://app.tbaindia.in`): set it to the app's real
-   address and redeploy.
-
-If you skip this step, advisors and regional accounts are still created and the email is simply skipped with a short note. See
-[Email (SMTP) setup](#email-smtp-setup) for details and other mail providers. The deploy in step 7 **fails** if the
-`SMTP_PASS` secret has not been created, because `apphosting.yaml` references it — so do step 2 above first (or
-comment out the `SMTP_PASS` block in `apphosting.yaml` if you are not using the welcome email yet).
-
-### 7. Deploy
+(This saves the project ID in the file `.firebaserc`, which is already set to `tba-drop-letter`; just check it
+matches.) Then upload the security rules, the search indexes and the
+weekly belt snapshot (a scheduled function in Mumbai, asia-south1):
 ```
-npx firebase deploy
+npm run deploy:firebase
 ```
-This uploads the security rules and search indexes, the weekly belt snapshot, and the app itself. The first time
-it asks a few questions:
-- "Did not find backend(s) tba-drop-letter. Do you want to create them?" press Enter (yes).
-- "Which backends do you want to create and deploy to?" press Space to tick `tba-drop-letter`, then Enter.
-- "Select a primary region to host your backend": pick the one nearest your team with the arrow keys, then Enter.
-- "How many days do you want to keep container images before they're deleted?" press Enter.
+(Run `npm run go-live:check` first if you like: it lists what is still missing and stops on anything unsafe.)
+If it stops because a Google service was "just enabled", wait two minutes and run it again. The search indexes
+finish building a few minutes later; until then a search can show an error mentioning an index.
 
-It takes 10-15 minutes. At the end it prints the app's address, like
-`https://tba-drop-letter--your-project-id.<region>.hosted.app` (also shown in the Firebase console under
-**App Hosting**). If it stops because a Google service was "just enabled", wait two minutes and run the same
-command again. The search indexes finish building a few minutes after the deploy; until then a search can show an
-error mentioning an index.
+### 7. Put the app on Netlify
+The app itself (the screens and the server part that adds people, resets passwords and sends the welcome email)
+runs on **Netlify**. Firebase keeps the sign-in and the data. This is a **new** Netlify site for the live app,
+separate from the demo site `tba-drop-letter-demo`.
+
+**a. Get the values you will paste** (keep this tab open):
+- **Firebase web app**: already done. The project `tba-drop-letter` and its web app settings (`apiKey`,
+  `projectId`, `appId`, `messagingSenderId`) are in `netlify.toml` and `.firebaserc`; they are public identifiers,
+  not secrets. If you ever move to another Firebase project, change them there.
+- **Server key**: same **Project settings** > **Service accounts** > **Generate new private key** > **Generate
+  key**. A `.json` file downloads. Open it in Notepad: you need `client_email` and `private_key` (the long value from
+  `-----BEGIN PRIVATE KEY-----` to `-----END PRIVATE KEY-----\n`). This key gives full access to the data: paste it
+  only into Netlify, never into chat or email, and **delete the file** when step 8 is done.
+- **Email password**: a **Google App Password** for `indiaops@tbaindia.in` (turn on 2-Step Verification, then
+  **Google Account > Security > App passwords**, name it `TBA Drop Letter`, copy the 16-character code). It goes
+  only into Netlify. Ask whoever manages the `tbaindia.in` domain to check its SPF, DKIM and DMARC records for
+  Google Workspace, so the welcome emails are not marked as spam.
+
+**b. Create the site**: https://app.netlify.com > **Add new project** > **Import an existing project** >
+**GitHub** > pick `TBA-DROP-LETTER`, branch `main`. Name it, for example `tba-drop-letter-app`. Leave the build
+settings as they are (`netlify.toml` sets them). Before deploying (or right after the first attempt), add the
+variables below.
+
+**c. Environment variables**: the site > **Project configuration** > **Environment variables** > **Add a
+variable** > **Add a single variable**, once per row. "Scope" is under **Scopes** (choose **Specific scopes**);
+"Secret" means tick **Contains secret values**. Leave every variable the same for all deploy contexts.
+
+| Key | Value | Scope | Secret |
+|---|---|---|---|
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `tba-drop-letter.firebaseapp.com` for now; step 9 changes it to the app's address | Builds | no |
+| `FIREBASE_CLIENT_EMAIL` | `client_email` from the key file | Functions | no |
+| `FIREBASE_PRIVATE_KEY` | `private_key` from the key file, all of it | Functions | **yes** |
+| `SMTP_HOST` | `smtp.gmail.com` | Functions | no |
+| `SMTP_PORT` | `587` | Functions | no |
+| `SMTP_USER` | `indiaops@tbaindia.in` | Functions | no |
+| `SMTP_PASS` | the App Password | Functions | **yes** |
+| `MAIL_FROM` | `indiaops@tbaindia.in` | Functions | no |
+| `APP_URL` | the app's address, for example `https://app.tbaindia.in` | Functions | no |
+
+The other Firebase settings are already in `netlify.toml`. Keep the Functions variables to these: Netlify gives functions at most 4 KB of variables in total, and the private
+key alone is about 1.7 KB. (The `NEXT_PUBLIC_*` values are public settings, not secrets: they are built into the
+page.)
+
+**d. Deploy**: the site > **Deploys** > **Trigger deploy** > **Deploy project**. It takes a few minutes. The build
+checks the variables first: if one is missing it stops and the deploy log says which (`[go-live] STOP: ...`).
+The app is then live at `https://<site-name>.netlify.app`.
+
+**e. Your own address** (for example `app.tbaindia.in`): the site > **Domain management** > **Add a domain**, type
+it, and follow the steps: at the `tbaindia.in` DNS provider add a **CNAME** record `app` pointing to
+`<site-name>.netlify.app`. Netlify issues the HTTPS certificate by itself once the record works (minutes to a few
+hours). If you use a different address, change `APP_URL` to match.
+
+Optional: on paid Netlify plans, **Project configuration** > **Build & deploy** > **Functions** > **Region** can be
+set to **Mumbai (ap-south-1)**, next to the Firestore data, which makes saving a little faster.
 
 ### 8. Create the master account
 Use the Google account (Gmail or company Google Workspace) of the person who will be master:
 ```
 npm run create-master -- --email you@yourcompany.in --name "Your Name"
 ```
-It creates the master entry and uses the login from step 6.
+It creates the master entry and uses the login from step 6 (or the key file from step 7a: save it in the project
+folder as `service-account.json`).
 It is safe to run again, for example to fix the name or to restore master access.
 
 To let the master sign in with an email and password as well as Google, add a password (at least 8 characters):
@@ -206,19 +237,17 @@ On computers and in phone browsers, sign-in opens a Google pop-up and works as s
 app added to the home screen (Android and iPhone), and phones that block the pop-up sign in by
 going to Google's page and coming back instead, which only works when sign-in runs on the app's own address. Set
 that up once:
-1. **Your app's address** without `https://`, for example `tba-drop-letter--your-project-id.<region>.hosted.app`
-   (from step 7), or your own domain if you connect one later (App Hosting > Settings > Domains).
-2. Firebase console > **Authentication** > **Settings** > **Authorized domains**: if the address is not listed,
-   click **Add domain** and add it.
+1. **Your app's address** without `https://`: your own domain from step 7e (for example `app.tbaindia.in`), or
+   `<site-name>.netlify.app` until then.
+2. Firebase console > **Authentication** > **Settings** > **Authorized domains**: click **Add domain** and add it.
 3. Open https://console.cloud.google.com/apis/credentials (check the project name at the top). Under
    **OAuth 2.0 Client IDs**, open **Web client (auto created by Google Service)**. Under **Authorized redirect
    URIs** click **Add URI**, enter `https://<your app's address>/__/auth/handler`, and click **Save**.
-4. Open `apphosting.yaml` in the project folder (Notepad or TextEdit). Near the end, delete the `# ` (hash and
-   space) at the start of the three lines of `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, and replace
-   `your-app-domain.example` with your app's address. Save.
-5. Deploy the app again: `npx firebase deploy --only apphosting`.
+4. Netlify > the site > **Project configuration** > **Environment variables**: change
+   `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` to your app's address (no `https://`).
+5. Deploy again: **Deploys** > **Trigger deploy** > **Deploy project**.
 
-If you later add your own domain, repeat 2-5 with that domain.
+If you change the address later, repeat 2-5 with the new one.
 
 ### 10. Sign in and add people
 1. Open the app's address and sign in with the master account (Google, or the email and password if you set one
@@ -254,11 +283,8 @@ When you add an advisor or a regional account (step 10), the app can email them 
 and how to add it to their home screen, sent **from `indiaops@tbaindia.in`**. This is optional: if it is not set
 up, accounts are still created and you simply share their login and the links yourself (you will see a short note when the email is skipped).
 
-On Firebase App Hosting the non-secret settings are **already filled in** in `apphosting.yaml` for the
-`indiaops@tbaindia.in` Google Workspace mailbox, so you normally only need to (a) create the `SMTP_PASS` secret and
-(b) set `APP_URL` to the app's address (go-live step 6b). On other hosts, set all
-of these as environment variables. The password is **never** stored in `apphosting.yaml` or committed to the repo
-(see `.env.example`) — it lives only in Cloud Secret Manager:
+The settings are Netlify environment variables (go-live step 7c), never written in the code or committed. The
+password is marked as a secret in Netlify:
 - `SMTP_HOST` — your mail provider's SMTP server for `indiaops@tbaindia.in` (Google Workspace: `smtp.gmail.com`;
   see the recommended config below).
 - `SMTP_PORT` — `587` (STARTTLS, the default) or `465` (implicit TLS, with `SMTP_SECURE=true`).
@@ -281,21 +307,10 @@ APP_URL=https://app.tbaindia.in
 ```
 
 `SMTP_PASS` must be a **Google App Password**, not the normal mailbox password: enable 2-Step Verification on the
-`indiaops@tbaindia.in` account, then go to **Security → App passwords → Mail** to generate one (a 16-character
-code). Store it in Cloud Secret Manager — never commit it to the repo. For this project, run once from the project
-folder (after `firebase use --add`):
-
-```
-firebase apphosting:secrets:set SMTP_PASS
-```
-
-Paste the App Password when prompted, and answer **Yes** when it offers to grant the `tba-drop-letter` backend
-access to the secret. `apphosting.yaml` already references it as `secret: SMTP_PASS`, so the next
-`firebase deploy` wires it into the running server. (If you are on Spark/other hosting, set `SMTP_PASS` as a
-normal environment variable instead.) To rotate the password later, run the same command again and redeploy.
-
-> The deploy **fails** if `apphosting.yaml` references `secret: SMTP_PASS` but the secret does not exist yet, so
-> create the secret **before** the first `firebase deploy`.
+`indiaops@tbaindia.in` account, then go to **Security → App passwords** to generate one (a 16-character code).
+Paste it only into Netlify as `SMTP_PASS` with **Contains secret values** ticked, and redeploy. To change it later,
+create a new App Password, update the variable, redeploy, and remove the old App Password in the Google account.
+Ask the `tbaindia.in` DNS admin to check SPF, DKIM and DMARC for Google Workspace so the emails reach the inbox.
 
 The welcome email fires when an **advisor** or a **regional account** (State/City President, TBA India Ops) is
 created. It contains their **username** (their email), the **initial password** you set, the **app link**
@@ -310,8 +325,8 @@ national, state and city accounts; TBA India Ops → state and city accounts; ne
 exactly what is received in the demo: add an advisor or a regional account and the welcome email opens.
 
 ### Later: publishing a new version
-Run `npx firebase deploy` again in the project folder (`npx firebase deploy --only apphosting` if only the app
-changed). The data is not touched. The home-screen app shows the new version by itself (it opens the live site),
+Merge the change into `main` on GitHub: Netlify builds and publishes the app by itself. If the rules, indexes or
+the weekly function changed, also run `npm run deploy:firebase` in the project folder. The data is not touched. The home-screen app shows the new version by itself (it opens the live site),
 so nobody needs to reinstall anything.
 
 ### Troubleshooting
@@ -320,9 +335,13 @@ so nobody needs to reinstall anything.
 - **Deploying the function fails with "missing permission on the build service account"** (some new company
   Google Cloud setups): open https://console.cloud.google.com/iam-admin/iam, click the pencil next to
   "Compute Engine default service account" (`<number>-compute@developer.gserviceaccount.com`), **Add another
-  role** > "Cloud Build Service Account", **Save**, and run step 7 again.
+  role** > "Cloud Build Service Account", **Save**, and run `npm run deploy:firebase` again.
 - **On a phone, sign-in returns to the sign-in screen**, or the pop-up is blocked: finish step 9. The link
   "Pop-up blocked or stuck? Sign in on this page instead" on the sign-in screen uses the same page-based sign-in.
+- **A Netlify deploy fails with `[go-live] STOP`**: a variable from step 7c is missing or wrong; the line says
+  which. Fix it and deploy again.
+- **Adding a person fails with a server error**: check `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` (the
+  whole key, both BEGIN and END lines), then redeploy. Netlify > the site > **Logs** > **Functions** shows details.
 - **Costs**: Firebase console > **Usage and billing**, or the budget alert emails from step 2.
 
 ---
@@ -450,16 +469,19 @@ Offline, Next.js cannot fetch a page's data for an in-app link, so it loads the 
 logs "Failed to fetch RSC payload", which is expected).
 
 ### Hosting and configuration
-- `apphosting.yaml` (Firebase App Hosting, the default): turns off demo mode; the Firebase web settings come from
-  the web app linked to the backend (`FIREBASE_WEBAPP_CONFIG`, mapped in `next.config.ts`); the server uses the
-  backend's service account, so no key is needed.
-- `firebase.json`: Firestore rules and indexes, the functions, the App Hosting backend `tba-drop-letter`, and the
-  emulators. `.firebaserc`: the project ID (placeholder until step 6).
+- **Netlify** (the live host): `netlify.toml` builds the real Next.js app with `npm run build:netlify`
+  (`scripts/netlify-build.mjs`), and Netlify's Next.js runtime serves the pages and runs the server actions as
+  functions. The build first checks the environment variables (`scripts/live-env.mjs`) and a production deploy
+  stops if the Firebase settings or the server credentials are missing. Variables: the `NEXT_PUBLIC_FIREBASE_*`
+  values (scope Builds), and for the functions `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY` (the Admin SDK
+  credential, `src/lib/firebase/admin.ts`), `SMTP_*`, `MAIL_FROM` and `APP_URL`. Functions get at most 4 KB of
+  variables, which is why the key is passed as two fields rather than the whole JSON file.
+- `firebase.json`: Firestore rules and indexes, the functions and the emulators (`npm run deploy:firebase`
+  deploys the first three). `.firebaserc`: the project ID (placeholder until step 6).
 - `.env.example` lists every variable. Never commit `.env.local` or service account keys (both are git-ignored).
-- **Other hosts** (Vercel, Cloud Run, a VPS): `npm run build && npm start` with Node 22 or 24, and set
-  `NEXT_PUBLIC_USE_MOCK=false`, the `NEXT_PUBLIC_FIREBASE_*` values (Firebase console > Project settings > Your
-  apps > Web app) and `FIREBASE_SERVICE_ACCOUNT_KEY` (a service account key as JSON or base64; a secret). Deploy
-  the rules, indexes and function with `npx firebase deploy --only firestore,functions`.
+- **Other hosts** (Vercel, Cloud Run, a VPS): `npm run build && npm start` with Node 22 or 24, the
+  `NEXT_PUBLIC_FIREBASE_*` values, and either `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY` or
+  `FIREBASE_SERVICE_ACCOUNT_KEY` (the whole key as JSON or base64); on Google Cloud no key is needed.
 - **Redirect sign-in and `authDomain`**: redirect sign-in comes back through `https://<authDomain>/__/auth/handler`.
   Browsers that block third-party storage (Safari, installed web apps) lose the result when that is a different
   domain (`<project>.firebaseapp.com`). So in production `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` is the app's own
@@ -532,6 +554,5 @@ and a normal browser download for the Excel export. It has no Firebase code and 
 environment variables or secrets, and makes no requests beyond the page itself. Each visitor gets their own copy of
 the sample data in their browser; nothing is saved on a server or shared between visitors.
 - Netlify Drop: run `npm run build:demo`, then drag the `preview/dist-demo` folder onto https://app.netlify.com/drop.
-- From GitHub: in Netlify, Add new site > Import an existing project, and pick this repository. `netlify.toml` sets
-  everything (build command `npm run build:demo`, publish folder `preview/dist-demo`, Node 22), so leave the build
-  settings as they are. It only builds the demo; the live app is still deployed to Firebase (see above).
+- Netlify CLI: `npm run build:demo`, then `npx netlify deploy --prod --no-build --dir preview/dist-demo --site <demo site id>`.
+- Do not connect the demo site to this repository: `netlify.toml` builds the **live** app, not the demo.

@@ -2,13 +2,16 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from "react";
-import { api, USE_MOCK, type AccessResult, type Cursor, type Drop, type DropFilter, type Profile, type Role } from "@/lib/data";
+import { api, type AccessResult, type Cursor, type Drop, type DropFilter, type Profile, type Role } from "@/lib/data";
 import { ymd } from "@/lib/stats";
 import { scopeLabel } from "@/lib/labels";
 import { registerAdvisorServiceWorker } from "@/lib/advisor-offline";
 import { BrandLogo } from "@/components/brand-logo";
 import { InstallAppBanner } from "@/components/install-app";
 import { canManageRegionalAccounts } from "@/lib/data/authz";
+
+// Written out (not imported) so the bundler drops every demo-only branch from the live build.
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 
 export const inputCls = "mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-200";
 export const btnCls = "inline-flex items-center justify-center rounded-md bg-green-700 px-4 py-2.5 font-medium text-white hover:bg-green-800 disabled:opacity-50";

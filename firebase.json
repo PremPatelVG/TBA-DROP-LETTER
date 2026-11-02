@@ -23,28 +23,6 @@
       ]
     }
   ],
-  "apphosting": [
-    {
-      "backendId": "tba-drop-letter",
-      "rootDir": "/",
-      "ignore": [
-        "node_modules",
-        ".git",
-        ".next",
-        ".next-e2e",
-        "functions/node_modules",
-        "functions/lib",
-        "preview",
-        "tests",
-        "scripts",
-        "android",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*-debug.log",
-        "service-account*.json"
-      ]
-    }
-  ],
   "emulators": {
     "singleProjectMode": true,
     "auth": {

@@ -10,8 +10,8 @@ import {
   type Firestore,
 } from "firebase/firestore";
 
-// Browser-side Firebase. Values come from NEXT_PUBLIC_FIREBASE_* (see .env.example); on Firebase App Hosting
-// next.config.ts fills them from the linked web app when they are not set.
+// Browser-side Firebase. Values come from NEXT_PUBLIC_FIREBASE_* (see .env.example), set as Netlify environment
+// variables for the live app (README, go-live step 7c).
 const config = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -29,7 +29,7 @@ let db: Firestore | null = null;
 function firebaseApp() {
   if (typeof window === "undefined") throw new Error("The Firebase client only runs in the browser.");
   if (!config.apiKey || !config.projectId) {
-    throw new Error("Firebase is not configured. Set the NEXT_PUBLIC_FIREBASE_* values (see .env.example), or NEXT_PUBLIC_USE_MOCK=true for demo data.");
+    throw new Error("Firebase is not configured. Set the NEXT_PUBLIC_FIREBASE_* values (see .env.example), or run `npm run dev:demo` for demo data.");
   }
   return (app ??= getApps()[0] ?? initializeApp(config));
 }
