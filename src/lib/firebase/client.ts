@@ -29,7 +29,7 @@ let db: Firestore | null = null;
 function firebaseApp() {
   if (typeof window === "undefined") throw new Error("The Firebase client only runs in the browser.");
   if (!config.apiKey || !config.projectId) {
-    throw new Error("Firebase is not configured. Set the NEXT_PUBLIC_FIREBASE_* values (see .env.example), or NEXT_PUBLIC_USE_MOCK=true for demo data.");
+    throw new Error("Firebase is not configured. Set the NEXT_PUBLIC_FIREBASE_* values (see .env.example), or run `npm run dev:demo` for demo data.");
   }
   return (app ??= getApps()[0] ?? initializeApp(config));
 }

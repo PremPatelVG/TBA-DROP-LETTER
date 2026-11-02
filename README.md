@@ -17,9 +17,13 @@ APK: the site is an installable web app (PWA) that people add to their home scre
 ## Quick start (demo mode, no backend)
 ```
 npm install
-npm run dev      # http://localhost:3000
+npm run dev:demo   # http://localhost:3000, with sample data and demo accounts
 ```
-Demo mode is on by default (`NEXT_PUBLIC_USE_MOCK` unset or `true`). You can sign in with an email and the shared
+The app uses Firebase by default (`npm run dev` and every build need the Firebase settings). Demo mode is only for
+local development (`npm run dev:demo`, or `NEXT_PUBLIC_USE_MOCK=true` in `.env.local`), the clickable preview and
+the Netlify demo. **The live app never contains the demo data or demo accounts:** `next build` refuses
+`NEXT_PUBLIC_USE_MOCK=true`, the demo data layer is left out of the build, and `npm run go-live:check -- --build`
+scans the build to prove it. In demo mode you can sign in with an email and the shared
 demo password (shown on the sign-in screen, `demo1234`), or "Sign in with Google" opens a demo account chooser:
 **Master Admin** (sees everything, manages the regional accounts and edits the belt thresholds), **TBA India Ops**
 (national — sees everything and adds/manages state and city accounts, but no threshold editor), a **State/City president** (e.g. Gujarat or Rajkot), an
@@ -165,9 +169,18 @@ If you skip this step, advisors and regional accounts are still created and the 
 comment out the `SMTP_PASS` block in `apphosting.yaml` if you are not using the welcome email yet).
 
 ### 7. Deploy
+First run the pre-flight check; it lists anything still missing (project, `APP_URL`, sign-in domain, email
+secret) and stops on anything unsafe (demo data, a password written into `apphosting.yaml`, key files in git):
+```
+npm run go-live:check
+npm run build && npm run go-live:check -- --build    # optional: also proves the build has no demo accounts
+```
+Then deploy:
 ```
 npx firebase deploy
 ```
+(Or one part at a time: `npm run deploy:rules` for the security rules and indexes, `npm run deploy:functions`
+for the weekly belt snapshot in asia-south1, `npm run deploy:app` for the app.)
 This uploads the security rules and search indexes, the weekly belt snapshot, and the app itself. The first time
 it asks a few questions:
 - "Did not find backend(s) tba-drop-letter. Do you want to create them?" press Enter (yes).

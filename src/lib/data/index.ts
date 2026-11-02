@@ -2,10 +2,11 @@ import { firebaseApi } from "./firebase";
 import type { DataApi } from "./types";
 
 /**
- * Demo data is the default. Set NEXT_PUBLIC_USE_MOCK=false (plus the NEXT_PUBLIC_FIREBASE_* values) to use
- * Firebase: Google and email/password sign-in, and Firestore, with access enforced by firestore.rules.
+ * Firebase is the default (the live app): Google and email/password sign-in, and Firestore, with access enforced
+ * by firestore.rules. The in-browser demo data is used ONLY when NEXT_PUBLIC_USE_MOCK is exactly "true" (local
+ * `npm run dev:demo`, the clickable preview and the Netlify demo). `next build` refuses demo mode (next.config.ts).
  */
-export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
+export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 
 function lazyApi(load: () => Promise<DataApi>): DataApi {
   let ready: Promise<DataApi> | null = null;
@@ -30,7 +31,7 @@ function lazyApi(load: () => Promise<DataApi>): DataApi {
 // The demo data layer (mock.ts + its seed) is loaded on first use, through a dynamic import. The condition is
 // written out (not via USE_MOCK) so the bundler can evaluate it at build time and drop the
 // dynamic import entirely in a Firebase build: the demo seed and its shared demo password never ship there.
-export const api: DataApi = process.env.NEXT_PUBLIC_USE_MOCK !== "false"
+export const api: DataApi = process.env.NEXT_PUBLIC_USE_MOCK === "true"
   ? lazyApi(() => import("./mock").then((m) => m.mockApi))
   : firebaseApi;
 export type * from "./types";

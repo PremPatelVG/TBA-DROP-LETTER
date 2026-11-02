@@ -1,11 +1,14 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { api, USE_MOCK, type AccessResult, type DemoAccount } from "@/lib/data";
+import { api, type AccessResult, type DemoAccount } from "@/lib/data";
 import { accessRedirect, btnCls, errMsg, homeFor, inputCls, Notice, useData } from "@/components/ui";
 import { GoogleMark } from "@/components/google-mark";
 import { BrandLogo } from "@/components/brand-logo";
 import { InstallAppBanner } from "@/components/install-app";
+
+// Written out (not imported) so the bundler drops every demo-only branch from the live build.
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 
 type Phase = "checking" | "idle" | "pending" | "redirecting";
 const GOOGLE_LABEL: Record<Phase, string> = { checking: "Checking sign-in...", idle: "Sign in with Google", pending: "Please wait...", redirecting: "Opening Google..." };
@@ -87,7 +90,7 @@ export default function LoginPage() {
           <form onSubmit={signInPassword} className="mt-5 space-y-3">
             <label className="block text-sm font-medium">Email
               <input id="login-email" name="email" type="email" autoComplete="username" inputMode="email"
-                value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} className={inputCls} placeholder="name@example.com" />
+                value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} className={inputCls} placeholder="you@gmail.com" />
             </label>
             <label className="block text-sm font-medium">Password
               <input id="login-password" name="password" type="password" autoComplete="current-password"
@@ -128,7 +131,7 @@ export default function LoginPage() {
               Data lives in this browser only.
             </p>
             <DemoCredentials accounts={demo ?? []} onUse={(a) => { setEmail(a.email); setPassword(a.password); setError(null); setInfo(null); }} />
-            <button onClick={() => { if (process.env.NEXT_PUBLIC_USE_MOCK !== "false") void import("@/lib/data/mock").then((m) => { m.resetMockData(); location.reload(); }); }} className="mt-3 text-xs text-amber-900 underline">Reset demo data</button>
+            <button onClick={() => { if (process.env.NEXT_PUBLIC_USE_MOCK === "true") void import("@/lib/data/mock").then((m) => { m.resetMockData(); location.reload(); }); }} className="mt-3 text-xs text-amber-900 underline">Reset demo data</button>
           </div>
         )}
       </div>
